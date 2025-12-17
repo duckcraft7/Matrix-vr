@@ -1,216 +1,144 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Matrix V17 - Elevadores de Metal Realistas</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Matrix V19 - Corredor e Janelas</title>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-
     <script>
-      // ==========================================
-      // 1. TEXTURAS MATEMÁTICAS REALISTAS
-      // ==========================================
-      AFRAME.registerComponent('texture-manager', {
+      let emTransicao = false;
+
+      // --- TEXTURAS ---
+      AFRAME.registerComponent('textures', {
         init: function () {
-          const createTex = (id, color, detail, isMetal) => {
-              const c = document.createElement('canvas'); c.id=id; c.width=128; c.height=128;
+          const createTex = (id, color, grid) => {
+              const c = document.createElement('canvas'); c.id=id; c.width=256; c.height=256;
               const ctx = c.getContext('2d');
-              ctx.fillStyle = color; ctx.fillRect(0,0,128,128);
-              if(detail) { // Simular ranhuras de metal ou tijolo
-                 ctx.strokeStyle = detail; ctx.lineWidth = 2;
-                 for(let i=0; i<128; i+=16) { ctx.strokeRect(0, i, 128, 1); }
+              ctx.fillStyle = color; ctx.fillRect(0,0,256,256);
+              if(grid) {
+                ctx.fillStyle = "#ffffaa"; // Cor da luz da janela
+                for(let x=10; x<256; x+=40) 
+                  for(let y=10; y<256; y+=60) 
+                    if(Math.random()>0.3) ctx.fillRect(x, y, 20, 30);
               }
-              c.style.display='none'; document.body.appendChild(c);
+              document.body.appendChild(c);
           };
-          createTex('tex-metal', '#777', '#555');    // Aço escovado
-          createTex('tex-predio', '#333', '#111');   // Concreto escuro
-          createTex('tex-parede', '#eee', '#ddd');   // Gesso interno
+          createTex('tex-janelas', '#222', true);
         }
       });
 
-      // ==========================================
-      // 2. CONTROLE GAMEPAD (CÂMERA-ORIENTADO)
-      // ==========================================
-      AFRAME.registerComponent('gamepad-move', {
-        tick: function () {
-          const gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
-          if (!gp) return;
-          const x = gp.axes[0]; const z = gp.axes[1];
-          if (Math.abs(x) < 0.1 && Math.abs(z) < 0.1) return;
-
-          const cam = document.querySelector('[camera]');
-          const angle = cam.object3D.rotation.y; 
-          const speed = 0.15;
-          const el = this.el;
-          el.object3D.position.x += (x * Math.cos(angle) + z * Math.sin(angle)) * speed;
-          el.object3D.position.z += (z * Math.cos(angle) - x * Math.sin(angle)) * speed;
-        }
-      });
-
-      // ==========================================
-      // 3. CONSTRUTOR DE CABINE DE ELEVADOR
-      // ==========================================
-      function criarCabineElevador(pai, x, y, z, destino) {
-          const cabine = document.createElement('a-entity');
-          cabine.setAttribute('position', `${x} ${y} ${z}`);
-          
-          // Paredes de Metal (Aço Escovado)
-          const matMetal = 'src: #tex-metal; metalness: 0.6; roughness: 0.3';
-          
-          // Fundo, Esquerda, Direita
-          criarCaixa(cabine, 0, 1.25, -1, 2, 2.5, 0.1, null).setAttribute('material', matMetal);
-          criarCaixa(cabine, -1, 1.25, 0, 0.1, 2.5, 2, null).setAttribute('material', matMetal);
-          criarCaixa(cabine, 1, 1.25, 0, 0.1, 2.5, 2, null).setAttribute('material', matMetal);
-          
-          // Teto com Luz Embutida
-          const teto = criarCaixa(cabine, 0, 2.5, 0, 2, 0.1, 2, '#444');
-          const luzPainel = document.createElement('a-plane');
-          luzPainel.setAttribute('position', '0 -0.06 0');
-          luzPainel.setAttribute('rotation', '90 0 0');
-          luzPainel.setAttribute('width', 1.2); luzPainel.setAttribute('height', 1.2);
-          luzPainel.setAttribute('material', 'color: #fff; shader: flat; emissive: #fff; emissiveIntensity: 2');
-          teto.appendChild(luzPainel);
-
-          // Sensor de Teleporte (No chão da cabine)
-          const sensor = criarCaixa(cabine, 0, 0.1, 0, 1.8, 0.2, 1.8, '#222');
-          sensor.setAttribute('sensor-elevador', `tipo: ${destino}`);
-          sensor.setAttribute('opacity', 0.5);
-
-          pai.appendChild(cabine);
-      }
-
-      // ==========================================
-      // 4. LÓGICA DE TELEPORTE
-      // ==========================================
-      AFRAME.registerComponent('sensor-elevador', {
-        schema: { tipo: {type: 'string'} },
-        tick: function () {
-            const player = document.querySelector('#rig');
-            const dist = this.el.object3D.getWorldPosition(new THREE.Vector3()).distanceTo(player.object3D.position);
-            
-            if (dist < 1.0) {
-                if (this.data.tipo === 'RUA') {
-                     player.object3D.position.set(0, 0.2, 0); 
-                     document.querySelector('#cidade-root').setAttribute('visible', true);
-                     document.querySelector('#interior-root').innerHTML = '';
-                } else {
-                     player.object3D.position.set(0, 100, 0); 
-                     document.querySelector('#cidade-root').setAttribute('visible', false);
-                     gerarSalaNoCeu(this.data.tipo);
-                }
-                player.object3D.position.z += 2.5; 
-            }
-        }
-      });
-
-      // ==========================================
-      // 5. SALA FECHADA REALISTA
-      // ==========================================
-      function gerarSalaNoCeu(tipo) {
+      // --- LÓGICA DO CORREDOR E APARTAMENTO ---
+      function irParaCorredor() {
           const pai = document.querySelector('#interior-root');
-          pai.innerHTML = '';
-          const h = 3;
+          pai.innerHTML = ''; // Limpa tudo
           
-          // Cubo da Sala (Paredes, Piso, Teto)
-          const quarto = document.createElement('a-box');
-          quarto.setAttribute('position', '0 101.5 0');
-          quarto.setAttribute('width', 8); quarto.setAttribute('height', h); quarto.setAttribute('depth', 8);
-          quarto.setAttribute('material', 'src: #tex-parede; side: back; roughness: 1');
-          pai.appendChild(quarto);
+          // 1. O CORREDOR (Longo e estreito)
+          const corredor = criarCaixa(pai, 0, 101.5, -10, 3, 3, 30, '#ddd');
+          corredor.setAttribute('material', 'side: back');
 
-          // Piso Madeira
-          criarCaixa(pai, 0, 100, 0, 8, 0.1, 8, '#5c3a21');
+          // 2. PORTAS NO CORREDOR
+          for(let z = -22; z < 5; z += 5) {
+              const num = 100 + Math.floor((z + 25));
+              const porta = criarCaixa(pai, 1.4, 101.1, z, 0.1, 2.2, 1.2, num === 105 ? '#8B4513' : '#444');
+              
+              const txt = document.createElement('a-text');
+              txt.setAttribute('value', num.toString());
+              txt.setAttribute('position', '-0.1 1.8 0');
+              txt.setAttribute('rotation', '0 -90 0');
+              txt.setAttribute('align', 'center'); txt.setAttribute('width', 3);
+              porta.appendChild(txt);
 
-          // Luz de Teto
-          const luz = document.createElement('a-entity');
-          luz.setAttribute('light', 'type: point; intensity: 0.7; distance: 10');
-          luz.setAttribute('position', '0 102.8 0');
-          pai.appendChild(luz);
-
-          // Elevador de Volta (Cabine de Metal dentro do quarto)
-          criarCabineElevador(pai, 0, 100, 3, 'RUA');
-
-          if(tipo === 'BANCO') {
-              criarCaixa(pai, 0, 101, -3, 4, 1, 1, '#111'); // Balcão Preto
-          } else {
-              criarCaixa(pai, -2.5, 100.5, -3, 2, 0.5, 3, '#eee'); // Cama
+              // Sensor para a Porta 105
+              if(num === 105) {
+                  porta.setAttribute('class', 'interagivel');
+                  porta.addEventListener('mouseenter', () => {
+                      if(!emTransicao) entrarNo105();
+                  });
+              }
           }
+
+          // 3. ELEVADOR DE VOLTA (No início do corredor)
+          criarCabineElevador(pai, 0, 100, 2, 'RUA');
       }
 
-      // ==========================================
-      // 6. GERADOR DE CIDADE
-      // ==========================================
-      AFRAME.registerComponent('cidade-v17', {
-        init: function () {
-            const scene = this.el;
-            for (let x = -2; x <= 2; x++) {
-                for (let z = -2; z <= 2; z++) {
-                    if (x === 0 && z === 0) continue;
-                    this.gerarEdificio(scene, x * 35, z * 35);
-                }
-            }
-        },
-        gerarEdificio: function (pai, x, z) {
-            const grp = document.createElement('a-entity');
-            grp.setAttribute('position', `${x} 0 ${z}`);
-            const ehBanco = Math.random() > 0.5;
+      function entrarNo105() {
+          emTransicao = true;
+          const fade = document.querySelector('#fade-screen');
+          fade.setAttribute('animation', 'property: material.opacity; from: 0; to: 1; dur: 500');
+          
+          setTimeout(() => {
+              const pai = document.querySelector('#interior-root');
+              pai.innerHTML = '';
+              // TEU APARTAMENTO
+              const apto = criarCaixa(pai, 10, 101.5, -5, 8, 3, 8, '#eee');
+              apto.setAttribute('material', 'side: back');
+              document.querySelector('#rig').object3D.position.set(10, 100, -5);
+              
+              const info = document.createElement('a-text');
+              info.setAttribute('value', 'APARTAMENTO 105');
+              info.setAttribute('position', '10 103 -5'); info.setAttribute('align', 'center');
+              pai.appendChild(info);
 
-            // Estrutura
-            criarCaixa(grp, 0, 0.1, 0, 18, 0.2, 18, '#222'); // Calçada
-            
-            // Pilastras Reais
-            const corEstrutura = '#444';
-            for(let i of [-8, 8]) {
-                for(let j of [-8, 8]) { criarCaixa(grp, i, 2.5, j, 1.5, 5, 1.5, corEstrutura); }
-            }
+              fade.setAttribute('animation', 'property: material.opacity; from: 1; to: 0; dur: 500');
+              setTimeout(() => { emTransicao = false; }, 2000);
+          }, 600);
+      }
 
-            // Torre do Prédio
-            const h = 25 + Math.random()*20;
-            const torre = document.createElement('a-box');
-            torre.setAttribute('position', `0 ${5 + h/2 - 0.1} 0`);
-            torre.setAttribute('width', 18); torre.setAttribute('depth', 18); torre.setAttribute('height', h);
-            torre.setAttribute('material', 'src: #tex-predio; repeat: 3 6');
-            grp.appendChild(torre);
-
-            // Cabine do Elevador no Térreo
-            criarCabineElevador(grp, 0, 0, -6, ehBanco ? 'BANCO' : 'APE');
-
-            // Placa do Prédio
-            const placa = document.createElement('a-text');
-            placa.setAttribute('value', ehBanco ? 'METACORP BANK' : 'APARTMENTS');
-            placa.setAttribute('position', '0 6 9.1');
-            placa.setAttribute('align', 'center'); placa.setAttribute('width', 18);
-            placa.setAttribute('color', ehBanco ? '#0af' : '#f80');
-            grp.appendChild(placa);
-
-            pai.appendChild(grp);
-        }
-      });
-
+      // --- REUTILIZÁVEIS ---
       function criarCaixa(pai, x, y, z, w, h, d, cor) {
           const b = document.createElement('a-box');
           b.setAttribute('position', `${x} ${y} ${z}`);
           b.setAttribute('width', w); b.setAttribute('height', h); b.setAttribute('depth', d);
-          if(cor) b.setAttribute('color', cor);
-          pai.appendChild(b);
-          return b;
+          b.setAttribute('color', cor);
+          pai.appendChild(b); return b;
       }
+
+      function criarCabineElevador(pai, x, y, z, destino) {
+          const c = document.createElement('a-entity');
+          c.setAttribute('position', `${x} ${y} ${z}`);
+          criarCaixa(c, 0, 1.25, -1, 2, 2.5, 0.1, '#777'); // Metal
+          const sensor = criarCaixa(c, 0, 0.1, 0, 1.5, 0.1, 1.5, '#222');
+          sensor.setAttribute('sensor-elevador', `tipo: ${destino}`);
+          pai.appendChild(c);
+      }
+
+      AFRAME.registerComponent('sensor-elevador', {
+        schema: { tipo: {type: 'string'} },
+        tick: function () {
+            if (emTransicao) return;
+            const player = document.querySelector('#rig');
+            if (this.el.object3D.getWorldPosition(new THREE.Vector3()).distanceTo(player.object3D.position) < 0.7) {
+                emTransicao = true;
+                document.querySelector('#fade-screen').setAttribute('animation', 'property: material.opacity; from: 0; to: 1; dur: 800');
+                setTimeout(() => {
+                    if(this.data.tipo === 'RUA') {
+                        player.object3D.position.set(0, 0.2, 5);
+                        document.querySelector('#cidade-root').setAttribute('visible', true);
+                        document.querySelector('#interior-root').innerHTML = '';
+                    } else {
+                        player.object3D.position.set(0, 100, 0);
+                        document.querySelector('#cidade-root').setAttribute('visible', false);
+                        irParaCorredor();
+                    }
+                    document.querySelector('#fade-screen').setAttribute('animation', 'property: material.opacity; from: 1; to: 0; dur: 800');
+                    setTimeout(() => emTransicao = false, 3000);
+                }, 1500);
+            }
+        }
+      });
     </script>
   </head>
   <body>
-    <a-entity texture-manager></a-entity>
-    <a-scene background="color: #87CEEB" fog="type: exponential; color: #aabbcc; density: 0.01">
-      <a-entity light="type: ambient; color: #666"></a-entity>
-      <a-entity light="type: directional; intensity: 0.8" position="-1 2 1"></a-entity>
-
-      <a-entity id="rig" position="0 0.2 0" gamepad-move>
-        <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: true">
-            <a-cursor color="#0f0" scale="0.5 0.5 0.5"></a-cursor>
-        </a-camera>
+    <a-entity textures></a-entity>
+    <a-scene background="color: #000">
+      <a-entity id="rig" position="0 0.2 0">
+        <a-camera><a-plane id="fade-screen" position="0 0 -0.1" material="color:black;opacity:0;transparent:true"></a-plane><a-cursor></a-cursor></a-camera>
       </a-entity>
 
       <a-entity id="cidade-root">
-          <a-plane rotation="-90 0 0" width="500" height="500" color="#111"></a-plane>
-          <a-entity cidade-v17></a-entity>
+        <a-plane rotation="-90 0 0" width="1000" height="1000" color="#111"></a-plane>
+        <a-entity position="0 0 -15">
+            <a-box position="0 25 0" width="20" height="50" depth="20" material="src: #tex-janelas; repeat: 4 10"></a-box>
+            <script>criarCabineElevador(document.querySelector('#cidade-root'), 0, 0, -4, 'APT');</script>
+        </a-entity>
       </a-entity>
 
       <a-entity id="interior-root"></a-entity>
