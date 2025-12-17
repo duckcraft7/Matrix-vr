@@ -1,176 +1,252 @@
 <!DOCTYPE html>
 <html>
-<head>
+  <head>
+    <title>Matrix Simulation - Clean Build</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <style>body { margin: 0; overflow: hidden; background-color: #87CEEB; }</style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-</head>
-<body>
-<script>
-    // --- 1. CONFIGURAÇÃO DO MUNDO (Cena e Luz) ---
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // Céu Azul Realista
-    scene.fog = new THREE.Fog(0x87CEEB, 10, 80); // Neblina para esconder o fim do mundo
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
 
-    // Câmeras (Olho Esquerdo e Direito)
-    const cameraL = new THREE.PerspectiveCamera(70, window.innerWidth/2 / window.innerHeight, 0.1, 200);
-    const cameraR = new THREE.PerspectiveCamera(70, window.innerWidth/2 / window.innerHeight, 0.1, 200);
+    <script>
+      // ==========================================
+      // 1. GERADOR DE TEXTURAS (Na Memória RAM)
+      // ==========================================
+      AFRAME.registerComponent('texture-manager', {
+        init: function () {
+          // Cria textura de JANELAS (Prédios)
+          const canvas = document.createElement('canvas'); 
+          canvas.id = 'tex-predio'; canvas.width = 128; canvas.height = 256;
+          const ctx = canvas.getContext('2d');
+          
+          // Fundo Concreto
+          ctx.fillStyle = '#555'; ctx.fillRect(0,0,128,256);
+          // Janelas Acessas/Apagadas
+          for(let y=10; y<250; y+=20) {
+            for(let x=10; x<110; x+=25) {
+                // 70% de chance de luz acesa
+                ctx.fillStyle = Math.random() > 0.3 ? '#87CEEB' : '#222';
+                ctx.fillRect(x, y, 15, 12);
+            }
+          }
+          
+          // Cria textura de ASFALTO
+          const c2 = document.createElement('canvas');
+          c2.id = 'tex-rua'; c2.width = 64; c2.height = 64;
+          const ctx2 = c2.getContext('2d');
+          ctx2.fillStyle = '#222'; ctx2.fillRect(0,0,64,64); // Preto
+          ctx2.fillStyle = '#444'; ctx2.fillRect(0,0,64,2); // Linha divisória
+          
+          // Adiciona ao DOM invisível para o A-Frame usar
+          canvas.style.display = 'none'; c2.style.display = 'none';
+          document.body.appendChild(canvas);
+          document.body.appendChild(c2);
+        }
+      });
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setScissorTest(true);
-    renderer.shadowMap.enabled = true; // Ativar sombras para realismo
-    document.body.appendChild(renderer.domElement);
+      // ==========================================
+      // 2. SISTEMA DA MATRIX (Geração de Mundo)
+      // ==========================================
+      AFRAME.registerComponent('matrix-world', {
+        init: function () {
+          this.gerarCidade();
+        },
 
-    // Luz do Sol
-    const luzSol = new THREE.DirectionalLight(0xffffff, 1);
-    luzSol.position.set(50, 100, 50);
-    luzSol.castShadow = true;
-    luzSol.shadow.mapSize.width = 2048; // Sombra nítida
-    luzSol.shadow.mapSize.height = 2048;
-    scene.add(luzSol);
+        gerarCidade: function () {
+            const scene = this.el;
+            scene.innerHTML = ''; // Limpa tudo (para reencarnação)
 
-    // Luz Ambiente (para as sombras não ficarem pretas 100%)
-    const luzAmbiente = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
-    scene.add(luzAmbiente);
+            // Grupo da cidade
+            const cityGroup = document.createElement('a-entity');
+            
+            // Loop de geração (Grid 10x10)
+            const tamanhoBloco = 20;
+            const range = 5; // 5 blocos para cada lado
+            
+            for (let x = -range; x <= range; x++) {
+                for (let z = -range; z <= range; z++) {
+                    
+                    // Pula o centro (onde o jogador nasce)
+                    if (Math.abs(x) < 1 && Math.abs(z) < 1) continue;
 
-    // --- 2. GERADOR DE TEXTURA PROCEDURAL (O Segredo do Realismo Leve) ---
-    function gerarTexturaPredio() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 128; canvas.height = 256;
-        const ctx = canvas.getContext('2d');
+                    // Chance de ser Prédio (70%) ou Praça (30%)
+                    if (Math.random() > 0.3) {
+                        this.criarPredio(cityGroup, x * tamanhoBloco, z * tamanhoBloco);
+                    } else {
+                        this.criarNPC(cityGroup, x * tamanhoBloco, z * tamanhoBloco);
+                    }
+                }
+            }
+            scene.appendChild(cityGroup);
+        },
 
-        // Parede de Concreto
-        ctx.fillStyle = '#AAAAAA'; // Cinza
-        ctx.fillRect(0, 0, 128, 256);
+        criarPredio: function (pai, x, z) {
+            const altura = 10 + Math.random() * 25; // 10 a 35 metros
+            const box = document.createElement('a-box');
+            
+            box.setAttribute('position', `${x} ${altura/2} ${z}`);
+            box.setAttribute('width', 12);
+            box.setAttribute('depth', 12);
+            box.setAttribute('height', altura);
+            box.setAttribute('material', 'src: #tex-predio; repeat: 4 8; roughness: 0.8');
+            box.setAttribute('shadow', 'cast: true; receive: true');
+            
+            pai.appendChild(box);
+        },
 
-        // Janelas (Vidro)
-        ctx.fillStyle = '#223344'; // Azul escuro vidro
-        for(let y=10; y<256; y+=30) {
-            for(let x=10; x<128; x+=35) {
-                // Desenha janelas aleatórias (algumas luzes apagadas)
-                if(Math.random() > 0.1) ctx.fillRect(x, y, 20, 20);
+        criarNPC: function (pai, x, z) {
+            // Cria um "Agente" simples
+            const npc = document.createElement('a-entity');
+            npc.setAttribute('position', `${x} 0 ${z}`);
+            npc.setAttribute('npc-ai', ''); // Adiciona inteligência
+
+            // Corpo
+            const corpo = document.createElement('a-box');
+            corpo.setAttribute('position', '0 0.9 0');
+            corpo.setAttribute('width', 0.5); corpo.setAttribute('height', 1.8); corpo.setAttribute('depth', 0.3);
+            corpo.setAttribute('color', Math.random() > 0.5 ? '#111' : '#003366'); // Terno Preto ou Azul
+
+            // Cabeça
+            const cabeca = document.createElement('a-sphere');
+            cabeca.setAttribute('position', '0 1.9 0');
+            cabeca.setAttribute('radius', 0.2);
+            cabeca.setAttribute('color', '#ffccaa');
+
+            npc.appendChild(corpo);
+            npc.appendChild(cabeca);
+            pai.appendChild(npc);
+        }
+      });
+
+      // ==========================================
+      // 3. IA DOS NPCS (Comportamento)
+      // ==========================================
+      AFRAME.registerComponent('npc-ai', {
+        init: function() {
+            this.dir = { x: Math.random()-0.5, z: Math.random()-0.5 }; // Direção aleatória
+            this.speed = 0.02 + Math.random() * 0.02;
+            this.timer = 0;
+        },
+        tick: function() {
+            const pos = this.el.object3D.position;
+            
+            // Movimento
+            pos.x += this.dir.x * this.speed;
+            pos.z += this.dir.z * this.speed;
+
+            // IA: Muda de direção a cada 200 frames ou se for muito longe
+            this.timer++;
+            if (this.timer > 200 || Math.abs(pos.x) > 60 || Math.abs(pos.z) > 60) {
+                this.dir.x = (Math.random()-0.5);
+                this.dir.z = (Math.random()-0.5);
+                this.timer = 0;
+                
+                // Gira o corpo para a direção (opcional, visual)
+                this.el.object3D.rotation.y = Math.atan2(this.dir.x, this.dir.z);
             }
         }
-        
-        const tex = new THREE.CanvasTexture(canvas);
-        tex.magFilter = THREE.NearestFilter; // Mantém pixelado/nítido
-        return tex;
-    }
+      });
 
-    // Material Único (Instanced)
-    const materialConcreto = new THREE.MeshStandardMaterial({ 
-        map: gerarTexturaPredio(),
-        roughness: 0.8 
-    });
+      // ==========================================
+      // 4. JOGADOR (Movimento e Reencarnação)
+      // ==========================================
+      AFRAME.registerComponent('player-controls', {
+        init: function() {
+            this.resetTimer = 0;
+            this.vidas = 1;
+            this.uiTexto = document.querySelector('#ui-texto');
+            this.uiBarra = document.querySelector('#ui-barra');
+        },
+        tick: function(t, dt) {
+            const cam = this.el.querySelector('[camera]');
+            const rot = cam.getAttribute('rotation');
+            
+            // --- ANDAR (Olhar para o horizonte/chão: -10 a -50 graus) ---
+            if (rot.x < -10 && rot.x > -50) {
+                const angle = rot.y * (Math.PI / 180);
+                const speed = 0.15; // Velocidade em m/s
+                
+                // Matemática simples para andar na direção que olha
+                const pos = this.el.getAttribute('position');
+                pos.x -= Math.sin(angle) * speed;
+                pos.z -= Math.cos(angle) * speed;
+                this.el.setAttribute('position', pos);
+                
+                this.uiBarra.setAttribute('visible', false); // Esconde barra de reset
+            }
+            
+            // --- REENCARNAR (Olhar para os pés: < -60 graus) ---
+            else if (rot.x < -60) {
+                this.resetTimer += dt;
+                
+                // Visual da Barra Carregando
+                this.uiBarra.setAttribute('visible', true);
+                const scale = Math.min(this.resetTimer / 3000, 1); // 3 segundos
+                this.uiBarra.setAttribute('width', scale * 2); 
+                this.uiBarra.setAttribute('color', scale > 0.9 ? 'red' : 'white');
 
-    // --- 3. CRIANDO A CIDADE ---
-    const geoPredio = new THREE.BoxGeometry(1, 1, 1);
-    
-    // Chão
-    const chaoGeo = new THREE.PlaneGeometry(500, 500);
-    const chaoMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 });
-    const chao = new THREE.Mesh(chaoGeo, chaoMat);
-    chao.rotation.x = -Math.PI / 2;
-    chao.receiveShadow = true;
-    scene.add(chao);
+                // Ação de Reset
+                if (this.resetTimer > 3000) {
+                    this.reencarnar();
+                    this.resetTimer = 0;
+                }
+            } else {
+                this.resetTimer = 0;
+                this.uiBarra.setAttribute('visible', false);
+            }
+        },
 
-    // Gerar Prédios
-    for(let i=0; i<300; i++) {
-        const predio = new THREE.Mesh(geoPredio, materialConcreto);
-        
-        // Posição Grid
-        const posX = (Math.random() - 0.5) * 150;
-        const posZ = (Math.random() - 0.5) * 150;
-        
-        // Evita criar prédio em cima do jogador (0,0)
-        if(Math.abs(posX) < 5 && Math.abs(posZ) < 5) continue;
+        reencarnar: function() {
+            // Efeito visual
+            this.vidas++;
+            this.uiTexto.setAttribute('value', 'REINICIANDO MATRIX...');
+            this.uiTexto.setAttribute('color', 'red');
+            
+            const cityEntity = document.querySelector('#cidade-root');
+            
+            // Simula um "glitch" limpando a cidade
+            cityEntity.innerHTML = ''; 
 
-        const altura = Math.random() * 15 + 5; // Prédios de 5 a 20 andares
-        
-        predio.position.set(posX, altura/2, posZ);
-        predio.scale.set(4, altura, 4);
-        predio.castShadow = true;
-        predio.receiveShadow = true;
-        scene.add(predio);
-    }
+            setTimeout(() => {
+                // Gera nova cidade
+                cityEntity.components['matrix-world'].gerarCidade();
+                
+                // Reseta Jogador
+                this.el.setAttribute('position', '0 1.6 0');
+                this.uiTexto.setAttribute('value', 'VIDA: ' + this.vidas);
+                this.uiTexto.setAttribute('color', '#0f0');
+            }, 1000);
+        }
+      });
+    </script>
+  </head>
+  
+  <body>
+    <a-entity texture-manager></a-entity>
 
-    // --- 4. NPCS (Pessoas) ---
-    const npcs = [];
-    const geoCabeca = new THREE.SphereGeometry(0.3, 8, 8);
-    const geoCorpo = new THREE.BoxGeometry(0.5, 0.8, 0.3);
-    
-    function criarHumano(x, z) {
-        const grupo = new THREE.Group();
-        
-        // Camisa (Cor aleatória)
-        const matRoupa = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
-        const corpo = new THREE.Mesh(geoCorpo, matRoupa);
-        corpo.position.y = 1.0;
-        corpo.castShadow = true;
-        
-        // Cabeça
-        const matPele = new THREE.MeshStandardMaterial({ color: 0xffccaa });
-        const cabeca = new THREE.Mesh(geoCabeca, matPele);
-        cabeca.position.y = 1.6;
-        
-        grupo.add(corpo);
-        grupo.add(cabeca);
-        grupo.position.set(x, 0, z);
-        
-        scene.add(grupo);
-        npcs.push({ mesh: grupo, speed: (Math.random() * 0.05) + 0.02, dir: Math.random() * Math.PI * 2 });
-    }
+    <a-scene background="color: #87CEEB" 
+             fog="type: exponential; color: #999; density: 0.015"
+             shadow="type: basic">
+      
+      <a-entity light="type: ambient; color: #555"></a-entity>
+      <a-entity light="type: directional; color: #fff; intensity: 0.8; castShadow: true" 
+                position="-10 40 20"></a-entity>
 
-    // Gera 20 pessoas
-    for(let k=0; k<20; k++) {
-        criarHumano((Math.random()-0.5)*20, (Math.random()-0.5)*20);
-    }
+      <a-plane position="0 0 0" rotation="-90 0 0" width="500" height="500" 
+               color="#333" material="roughness: 1"></a-plane>
 
-    // --- 5. LOGICA DE MOVIMENTO E VR ---
-    // Simulação de cabeça
-    const dummyCam = new THREE.Object3D();
-    dummyCam.position.set(0, 1.7, 0); // Altura dos olhos (1.70m)
-    scene.add(dummyCam);
+      <a-entity id="cidade-root" matrix-world></a-entity>
 
-    function animate() {
-        requestAnimationFrame(animate);
+      <a-entity id="player" position="0 1.6 0" player-controls>
+        <a-camera look-controls="pointerLockEnabled: true">
+            <a-cursor color="cyan" scale="0.5 0.5 0.5" opacity="0.6"></a-cursor>
+            
+            <a-text id="ui-texto" value="VIDA: 1" position="0 0.8 -1.5" 
+                    align="center" width="2" color="#0f0"></a-text>
+            
+            <a-plane id="ui-barra" position="0 -0.5 -1" width="0" height="0.1" 
+                     color="white" visible="false"></a-plane>
+        </a-camera>
+      </a-entity>
 
-        // Animação dos NPCs
-        npcs.forEach(npc => {
-            npc.mesh.position.z += Math.cos(npc.dir) * npc.speed;
-            npc.mesh.position.x += Math.sin(npc.dir) * npc.speed;
-            // Se for muito longe, volta (efeito pacman)
-            if(Math.abs(npc.mesh.position.x) > 50) npc.mesh.position.x *= -1;
-            if(Math.abs(npc.mesh.position.z) > 50) npc.mesh.position.z *= -1;
-        });
-
-        // Configura Câmeras VR
-        // Gira a câmera baseado no tempo (teste) ou giroscópio real
-        // Para testar sem giroscopio agora:
-        dummyCam.rotation.y += 0.002; 
-
-        // Posiciona olhos
-        cameraL.position.copy(dummyCam.position);
-        cameraL.quaternion.copy(dummyCam.quaternion);
-        cameraL.translateX(-0.03); // Olho esquerdo
-
-        cameraR.position.copy(dummyCam.position);
-        cameraR.quaternion.copy(dummyCam.quaternion);
-        cameraR.translateX(0.03); // Olho direito
-
-        // Renderiza Esquerda
-        renderer.setViewport(0, 0, window.innerWidth/2, window.innerHeight);
-        renderer.setScissor(0, 0, window.innerWidth/2, window.innerHeight);
-        renderer.render(scene, cameraL);
-
-        // Renderiza Direita
-        renderer.setViewport(window.innerWidth/2, 0, window.innerWidth/2, window.innerHeight);
-        renderer.setScissor(window.innerWidth/2, 0, window.innerWidth/2, window.innerHeight);
-        renderer.render(scene, cameraR);
-    }
-
-    animate();
-</script>
-</body>
+    </a-scene>
+  </body>
 </html>
+
