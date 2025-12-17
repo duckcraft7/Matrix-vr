@@ -1,120 +1,156 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Matrix V25 - Real Walking System</title>
+    <title>Matrix V26 - Realismo Brasileiro</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
 
     <script>
-      let emTransicao = false;
-
       // ==========================================
-      // SISTEMA DE CAMINHADA REAL (ACELERÓMETRO)
+      // 1. GERADOR DE TEXTURAS (Janelas, Lojas, Céu)
       // ==========================================
-      AFRAME.registerComponent('real-walk', {
+      AFRAME.registerComponent('brazilian-assets', {
         init: function () {
-          this.prevAcc = 0;
-          this.stepThreshold = 1.5; // Sensibilidade do passo
-          this.walkingSpeed = 0.15;
-          this.isWalking = false;
-          
-          // Pedir permissão para sensores no iOS/Android moderno
-          if (typeof DeviceMotionEvent.requestPermission === 'function') {
-            window.addEventListener('click', () => {
-              DeviceMotionEvent.requestPermission();
-            });
-          }
-        },
-        tick: function () {
-          if (emTransicao) return;
-
-          // Captura a rotação da câmara (para onde olhas)
-          const cam = document.querySelector('[camera]');
-          const rotation = cam.object3D.rotation.y;
-          const rig = this.el.object3D;
-
-          // Lógica de detecção de movimento do telemóvel (Passo real)
-          window.ondevicemotion = (event) => {
-            let acc = event.accelerationIncludingGravity;
-            let currentAcc = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
-            let deltaAcc = Math.abs(currentAcc - this.prevAcc);
-            
-            // Se o telemóvel balançar como um passo humano
-            if (deltaAcc > this.stepThreshold) {
-              const moveX = Math.sin(rotation) * this.walkingSpeed;
-              const moveZ = Math.cos(rotation) * this.walkingSpeed;
+          const createTex = (id, color, type) => {
+              const c = document.createElement('canvas'); c.id=id; c.width=256; c.height=256;
+              const ctx = c.getContext('2d');
+              ctx.fillStyle = color; ctx.fillRect(0,0,256,256);
               
-              rig.position.x -= moveX;
-              rig.position.z -= moveZ;
-            }
-            this.prevAcc = currentAcc;
+              if(type === 'predio') {
+                ctx.fillStyle = "#87CEEB"; // Luz de janela
+                for(let y=20; y<256; y+=60) 
+                  for(let x=20; x<256; x+=45) 
+                    if(Math.random()>0.2) ctx.fillRect(x, y, 25, 30);
+              }
+              if(type === 'loja') {
+                ctx.strokeStyle = "#000"; ctx.lineWidth = 5;
+                ctx.strokeRect(10, 50, 236, 150); // Vitrine
+                ctx.fillStyle = "#333"; ctx.fillRect(20, 60, 216, 130);
+              }
+              document.body.appendChild(c);
           };
+          createTex('tex-apt', '#d2b48c', 'predio');  // Bege/Tijolo
+          createTex('tex-banco', '#4682B4', 'predio'); // Azul Banco
+          createTex('tex-comercio', '#aaa', 'loja');   // Lanchonete/Loja
         }
       });
 
       // ==========================================
-      // GERADOR DE CIDADE ORGANIZADA (V22)
+      // 2. CONSTRUTOR URBANO (Zoneamento Brasileiro)
       // ==========================================
-      AFRAME.registerComponent('city-logic', {
+      AFRAME.registerComponent('city-builder', {
         init: function () {
           const scene = this.el;
-          for (let qX = -4; qX <= 4; qX++) {
-            for (let qZ = -4; qZ <= 4; qZ++) {
-              if (qX === 0 && qZ === 0) continue;
-              const x = qX * 55;
-              const z = qZ * 55;
-              this.createBlock(scene, x, z);
+          const step = 35; 
+          for (let x = -70; x <= 70; x += step) {
+            for (let z = -70; z <= 70; z += step) {
+              if (Math.abs(x) < 5 && Math.abs(z) < 5) continue;
+              
+              const rand = Math.random();
+              let tipo = "APTO";
+              if (rand > 0.8) tipo = "BANCO";
+              else if (rand > 0.6) tipo = "LANCHONETE";
+              else if (rand > 0.5) tipo = "SHOPPING";
+
+              this.createLot(scene, x, z, tipo);
             }
           }
         },
-        createBlock: function(scene, x, z) {
-          const block = document.createElement('a-box');
-          block.setAttribute('position', `${x} 0.05 ${z}`);
-          block.setAttribute('width', 35); block.setAttribute('depth', 35); block.setAttribute('height', 0.1);
-          block.setAttribute('color', '#222');
+        createLot: function (pai, x, z, tipo) {
+          const grp = document.createElement('a-entity');
+          grp.setAttribute('position', `${x} 0 ${z}`);
           
-          // Prédios simples para performance
-          for(let i=0; i<4; i++){
-             const p = document.createElement('a-box');
-             const px = (i < 2 ? -10 : 10);
-             const pz = (i % 2 === 0 ? -10 : 10);
-             p.setAttribute('position', `${px} 15 ${pz}`);
-             p.setAttribute('width', 15); p.setAttribute('depth', 15); p.setAttribute('height', 30);
-             p.setAttribute('color', '#1a1a1a');
-             block.appendChild(p);
-          }
-          scene.appendChild(block);
+          let h = 15 + Math.random() * 25;
+          let tex = "#tex-apt";
+          let corBase = "#eee";
+
+          if(tipo === "BANCO") { tex = "#tex-banco"; corBase = "#4682B4"; h = 30; }
+          if(tipo === "LANCHONETE") { tex = "#tex-apt"; corBase = "#ffcc00"; h = 10; }
+          if(tipo === "SHOPPING") { tex = "#tex-banco"; corBase = "#fff"; h = 12; }
+
+          // Prédio Principal
+          const b = document.createElement('a-box');
+          b.setAttribute('position', `0 ${h/2} 0`);
+          b.setAttribute('width', 20); b.setAttribute('depth', 20); b.setAttribute('height', h);
+          b.setAttribute('material', `src: ${tex}; repeat: 2 6`);
+          grp.appendChild(b);
+
+          // Térreo Decorado (Loja/Portaria)
+          const terreo = document.createElement('a-box');
+          terreo.setAttribute('position', '0 2 10.1');
+          terreo.setAttribute('width', 18); terreo.setAttribute('height', 4); terreo.setAttribute('depth', 0.5);
+          terreo.setAttribute('material', 'src: #tex-comercio');
+          terreo.setAttribute('color', corBase);
+          grp.appendChild(terreo);
+
+          // Placa 3D (Estilo Brasileiro)
+          const placa = document.createElement('a-text');
+          placa.setAttribute('value', tipo);
+          placa.setAttribute('position', '0 5 10.3');
+          placa.setAttribute('align', 'center'); placa.setAttribute('width', 18);
+          placa.setAttribute('color', 'black');
+          grp.appendChild(placa);
+
+          pai.appendChild(grp);
+        }
+      });
+
+      // ==========================================
+      // 3. MOVIMENTO REAL (PASSO A PASSO)
+      // ==========================================
+      AFRAME.registerComponent('real-walk', {
+        init: function () {
+          this.prevY = 0;
+          this.stepSensitivity = 0.08; 
+          this.speed = 0.2;
+          
+          window.addEventListener('devicemotion', (e) => {
+            let acc = e.accelerationIncludingGravity;
+            if(!acc) return;
+            
+            let currentY = acc.y;
+            let delta = Math.abs(currentY - this.prevY);
+
+            if (delta > this.stepSensitivity) {
+              const cam = document.querySelector('[camera]');
+              const rot = cam.getAttribute('rotation').y * (Math.PI / 180);
+              const rig = document.querySelector('#rig').object3D;
+              
+              rig.position.x -= Math.sin(rot) * this.speed;
+              rig.position.z -= Math.cos(rot) * this.speed;
+            }
+            this.prevY = currentY;
+          });
         }
       });
     </script>
   </head>
   <body>
-    <a-scene background="color: #050505" fog="type: exponential; color: #111; density: 0.02">
+    <a-entity brazilian-assets></a-entity>
+    
+    <a-scene background="color: #87CEEB" fog="type: exponential; color: #a3d0e4; density: 0.01">
       
-      <a-entity id="rig" position="0 0.2 0" real-walk>
+      <a-sky color="#87CEEB"></a-sky>
+      <a-entity light="type: directional; color: #FFF; intensity: 1" position="-1 2 1"></a-entity>
+      <a-entity light="type: ambient; color: #BBB"></a-entity>
+
+      <a-entity id="rig" position="0 0.1 0" real-walk>
         <a-camera look-controls>
-          <a-cursor color="lime"></a-cursor>
-          <a-plane id="fade" position="0 0 -0.1" width="2" height="2" color="black" opacity="0" transparent="true"></a-plane>
+          <a-cursor color="#FF4500"></a-cursor>
         </a-camera>
       </a-entity>
 
-      <a-entity id="cidade-root" city-logic>
-        <a-plane rotation="-90 0 0" width="2000" height="2000" color="#0a0a0a"></a-plane>
+      <a-entity id="cidade-root" city-builder>
+        <a-plane rotation="-90 0 0" width="1000" height="1000" color="#333"></a-plane>
+        <a-grid position="0 0.01 0" width="1000" height="1000" static-body material="opacity: 0.1; color: #fff"></a-grid>
       </a-entity>
 
     </a-scene>
 
-    <div style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); color: lime; font-family: monospace; text-align: center; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid lime;">
-      DÁ UM PASSO FÍSICO PARA ANDAR<br>
-      (Clica no ecrã para ativar sensores)
+    <div onclick="this.style.display='none'" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); color:white; display:flex; align-items:center; justify-content:center; z-index:9999; text-align:center; font-family: sans-serif;">
+       <h1>MATRIX BRASIL VR</h1>
+       <p>1. Coloque no VR BOX<br>2. Toque aqui para iniciar<br>3. Caminhe suavemente para andar</p>
     </div>
-
-    <script>
-      // Ativação por toque para navegadores mobile
-      window.addEventListener('click', () => {
-        document.querySelector('a-scene').enterVR();
-      });
-    </script>
   </body>
 </html>
 
