@@ -1,275 +1,281 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Matrix Realista - Bluetooth & Interiores</title>
+    <title>Matrix V14 - Elevadores e Interiores</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
 
     <script>
       // ==========================================
-      // 1. GERADOR DE TEXTURAS (Janelas Grandes)
+      // 1. GERENCIADOR DE ESTADO (Onde estou?)
+      // ==========================================
+      var estadoJogo = {
+          local: 'RUA', // RUA, BANCO, CORREDOR, CASA
+          dinheiro: 0
+      };
+
+      // ==========================================
+      // 2. TEXTURAS (Adicionadas texturas de interior)
       // ==========================================
       AFRAME.registerComponent('texture-manager', {
         init: function () {
-          // --- TEXTURA PRÉDIO (Janelões) ---
-          const canvas = document.createElement('canvas'); 
-          canvas.id = 'tex-predio'; canvas.width = 256; canvas.height = 256;
-          const ctx = canvas.getContext('2d');
+          const createTex = (id, color, detailColor) => {
+              const c = document.createElement('canvas'); c.id=id; c.width=64; c.height=64;
+              const ctx = c.getContext('2d');
+              ctx.fillStyle = color; ctx.fillRect(0,0,64,64);
+              if(detailColor) {
+                  ctx.fillStyle = detailColor; ctx.fillRect(10,10,20,20); ctx.fillRect(35,35,20,20);
+              }
+              c.style.display='none'; document.body.appendChild(c);
+          };
           
-          // Fundo Concreto Escuro
-          ctx.fillStyle = '#404040'; ctx.fillRect(0,0,256,256);
-          
-          // Janelas Grandes e Espaçadas
-          const larguraJ = 40;
-          const alturaJ = 50;
-          const espaco = 20;
-          
-          for(let y=10; y<250; y += (alturaJ + espaco)) {
-            for(let x=10; x<250; x += (larguraJ + espaco)) {
-                // Vidro Azulado com variação de luz
-                const luz = Math.random();
-                if(luz > 0.3) {
-                    ctx.fillStyle = `rgb(100, 150, ${200 + Math.random()*55})`; // Azul Variável
-                } else {
-                    ctx.fillStyle = '#1a1a1a'; // Luz apagada
-                }
-                ctx.fillRect(x, y, larguraJ, alturaJ);
-                
-                // Reflexo no vidro
-                ctx.fillStyle = 'rgba(255,255,255,0.1)';
-                ctx.fillRect(x, y, larguraJ, alturaJ/2);
-            }
-          }
-          canvas.style.display = 'none'; document.body.appendChild(canvas);
-
-          // --- TEXTURA INTERIOR (Piso e Parede) ---
-          const c2 = document.createElement('canvas'); c2.id='tex-chao'; c2.width=64; c2.height=64;
-          const ctx2 = c2.getContext('2d');
-          ctx2.fillStyle='#e0e0e0'; ctx2.fillRect(0,0,64,64); // Mármore branco
-          ctx2.strokeStyle='#ccc'; ctx2.strokeRect(0,0,64,64);
-          c2.style.display='none'; document.body.appendChild(c2);
+          createTex('tex-predio', '#444', '#87CEEB'); // Janelas
+          createTex('tex-banco', '#708090', '#aaa'); // Concreto Banco
+          createTex('tex-ape', '#d2b48c', '#8b4513'); // Tijolo Apartamento
+          createTex('tex-atm', '#003366', '#00ccff'); // Tela Azul ATM
+          createTex('tex-porta', '#5c3a21', '#3e2714'); // Madeira Porta
         }
       });
 
       // ==========================================
-      // 2. CONTROLE BLUETOOTH (Gamepad)
+      // 3. CONTROLE GAMEPAD (Mantido)
       // ==========================================
       AFRAME.registerComponent('gamepad-move', {
-        init: function () {
-          this.speed = 0.15; // Velocidade de caminhada
-        },
         tick: function () {
-          const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-          if (!gamepads) return;
+          const gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+          if (!gp) return;
+          const x = gp.axes[0]; const z = gp.axes[1];
+          if (Math.abs(x) < 0.1 && Math.abs(z) < 0.1) return;
 
-          // Procura o primeiro controle ativo
-          const gp = gamepads[0] || gamepads[1]; 
-          if (gp) {
-            // Eixos Padrão: 0 = Esq/Dir, 1 = Frente/Trás
-            const x = gp.axes[0]; 
-            const z = gp.axes[1];
-
-            // Zona morta (para o boneco não andar sozinho)
-            if (Math.abs(x) < 0.1 && Math.abs(z) < 0.1) return;
-
-            const el = this.el;
-            const angle = el.object3D.rotation.y; // Rotação atual do corpo/câmera
-            
-            // Matemática para mover na direção que você está olhando
-            const dx = (x * Math.cos(angle) + z * Math.sin(angle)) * this.speed;
-            const dz = (z * Math.cos(angle) - x * Math.sin(angle)) * this.speed;
-
-            el.object3D.position.x += dx;
-            el.object3D.position.z += dz;
-          }
+          const el = this.el;
+          const angle = el.object3D.rotation.y;
+          const speed = 0.15;
+          
+          el.object3D.position.x += (x * Math.cos(angle) + z * Math.sin(angle)) * speed;
+          el.object3D.position.z += (z * Math.cos(angle) - x * Math.sin(angle)) * speed;
         }
       });
 
       // ==========================================
-      // 3. CONSTRUTOR DE PRÉDIOS "ENTRÁVEIS"
+      // 4. ELEVADOR E COLISÃO (Lógica Nova)
       // ==========================================
-      AFRAME.registerComponent('cidade-realista', {
+      AFRAME.registerComponent('sensor-elevador', {
+        schema: { tipo: {type: 'string', default: 'RUA'} },
+        tick: function () {
+            // Checa distancia do jogador
+            const player = document.querySelector('#rig');
+            const minhaPos = this.el.object3D.getWorldPosition(new THREE.Vector3());
+            const playerPos = player.object3D.position;
+            
+            const dist = minhaPos.distanceTo(playerPos);
+            
+            // Se estiver perto (< 1.5m)
+            if (dist < 1.5) {
+                if (this.data.tipo === 'SUBIR_BANCO') carregarInterior('BANCO');
+                if (this.data.tipo === 'SUBIR_APE') carregarInterior('CORREDOR');
+                if (this.data.tipo === 'DESCER') carregarInterior('RUA');
+                if (this.data.tipo === 'PORTA_CASA') carregarInterior('CASA');
+                
+                // Empurra o jogador para não disparar 2x seguidas
+                player.object3D.position.z += 1; 
+            }
+        }
+      });
+
+      // FUNÇÃO GLOBAL DE TROCA DE AMBIENTE
+      function carregarInterior(tipo) {
+          const cenaRua = document.querySelector('#cidade-root');
+          const cenaInterior = document.querySelector('#interior-root');
+          const player = document.querySelector('#rig');
+          const aviso = document.querySelector('#aviso-tela');
+
+          // Efeito visual
+          aviso.setAttribute('visible', true);
+          setTimeout(() => { aviso.setAttribute('visible', false); }, 1000);
+
+          // Limpa interior anterior
+          cenaInterior.innerHTML = '';
+
+          if (tipo === 'RUA') {
+              cenaRua.setAttribute('visible', true);
+              player.object3D.position.y = 0; // Chão
+              estadoJogo.local = 'RUA';
+          } 
+          else {
+              cenaRua.setAttribute('visible', false); // Esconde a cidade (Performance)
+              player.object3D.position.set(0, 100, 0); // Teleporta pro céu
+              
+              if (tipo === 'BANCO') gerarBanco(cenaInterior);
+              if (tipo === 'CORREDOR') gerarCorredor(cenaInterior);
+              if (tipo === 'CASA') gerarApartamento(cenaInterior);
+          }
+      }
+
+      // ==========================================
+      // 5. GERADORES DE SALAS
+      // ==========================================
+      function gerarBanco(pai) {
+          // Sala Azul e Fria
+          criarCaixa(pai, 0, 100, 0, 20, 0.2, 20, '#708090'); // Chão
+          criarCaixa(pai, 0, 102, -10, 20, 4, 0.5, '#708090'); // Parede Fundo
+          
+          // ATMs
+          for(let i=-5; i<=5; i+=2.5) {
+             const atm = criarCaixa(pai, i, 101, -9, 1.5, 2, 1, '#111');
+             // Tela ATM
+             const tela = criarCaixa(atm, 0, 0.2, 0.51, 1, 0.5, 0.1, 'blue');
+          }
+          
+          // Elevador de volta
+          criarElevador(pai, 0, 100, 8, 'DESCER', 'blue');
+      }
+
+      function gerarCorredor(pai) {
+          // Corredor bege
+          criarCaixa(pai, 0, 100, 0, 6, 0.2, 20, '#d2b48c'); // Chão
+          criarCaixa(pai, -3, 102, 0, 0.5, 4, 20, '#fff'); // Parede Esq
+          criarCaixa(pai, 3, 102, 0, 0.5, 4, 20, '#fff'); // Parede Dir
+          
+          // Porta do Apartamento (Trigger)
+          const porta = criarCaixa(pai, 0, 101, -9, 2, 2.5, 0.2, '#5c3a21');
+          porta.setAttribute('sensor-elevador', 'tipo: PORTA_CASA');
+          
+          // Texto na porta
+          const txt = document.createElement('a-text');
+          txt.setAttribute('value', 'SEU APTO');
+          txt.setAttribute('position', '0 1.5 0.2');
+          txt.setAttribute('align', 'center'); txt.setAttribute('width', 3);
+          porta.appendChild(txt);
+
+          // Elevador de volta
+          criarElevador(pai, 0, 100, 8, 'DESCER', 'gold');
+      }
+
+      function gerarApartamento(pai) {
+          // Quarto aconchegante
+          criarCaixa(pai, 0, 100, 0, 10, 0.2, 10, '#8B4513'); // Piso Madeira
+          
+          // Cama
+          criarCaixa(pai, -3, 100.5, -3, 3, 1, 4, 'red'); // Colchão
+          criarCaixa(pai, -3, 100.8, -4, 3, 0.3, 1, 'white'); // Travesseiro
+          
+          // TV
+          criarCaixa(pai, 3, 101, -4, 0.2, 1.5, 2.5, 'black');
+          
+          // Janela (visão falsa)
+          criarCaixa(pai, 0, 101.5, -5, 4, 2, 0.1, '#87CEEB');
+
+          // Porta de Saída (Volta pro corredor ou rua)
+          const portaSaida = criarCaixa(pai, 0, 101, 4.5, 2, 2.5, 0.2, '#5c3a21');
+          portaSaida.setAttribute('sensor-elevador', 'tipo: DESCER');
+      }
+
+      // Helpers
+      function criarCaixa(pai, x, y, z, w, h, d, cor) {
+          const b = document.createElement('a-box');
+          b.setAttribute('position', `${x} ${y} ${z}`);
+          b.setAttribute('width', w); b.setAttribute('height', h); b.setAttribute('depth', d);
+          b.setAttribute('color', cor);
+          pai.appendChild(b);
+          return b;
+      }
+      function criarElevador(pai, x, y, z, tipo, cor) {
+          const elv = criarCaixa(pai, x, y+1, z, 2, 0.2, 2, cor);
+          // Efeito de luz/pilar
+          criarCaixa(pai, x, y+2, z, 1.8, 3, 1.8, cor).setAttribute('opacity', 0.3);
+          elv.setAttribute('sensor-elevador', `tipo: ${tipo}`);
+          
+          const txt = document.createElement('a-text');
+          txt.setAttribute('value', tipo === 'DESCER' ? 'TERREO' : 'ELEVADOR');
+          txt.setAttribute('position', '0 2 0'); txt.setAttribute('align', 'center');
+          elv.appendChild(txt);
+      }
+
+      // ==========================================
+      // 6. GERADOR DE CIDADE (Com Tipos)
+      // ==========================================
+      AFRAME.registerComponent('cidade-v14', {
         init: function () {
             const scene = this.el;
-            const range = 4; // Tamanho da cidade
-            const tamanho = 25; // Espaço entre ruas
-            
-            for (let x = -range; x <= range; x++) {
-                for (let z = -range; z <= range; z++) {
-                    if (x === 0 && z === 0) continue; // Centro livre
-
-                    if (Math.random() > 0.2) {
-                        this.construirPredio(scene, x * tamanho, z * tamanho);
-                    } else {
-                        this.criarNPC(scene, x * tamanho, z * tamanho);
-                    }
+            for (let x = -3; x <= 3; x++) {
+                for (let z = -3; z <= 3; z++) {
+                    if (x === 0 && z === 0) continue;
+                    
+                    // Define Tipo: 0=Ape, 1=Banco
+                    const ehBanco = Math.random() > 0.6;
+                    this.criarPredio(scene, x * 25, z * 25, ehBanco);
                 }
             }
         },
 
-        construirPredio: function (pai, x, z) {
-            const grupo = document.createElement('a-entity');
-            grupo.setAttribute('position', `${x} 0 ${z}`);
+        criarPredio: function (pai, x, z, ehBanco) {
+            const grp = document.createElement('a-entity');
+            grp.setAttribute('position', `${x} 0 ${z}`);
+            
+            // Textura e Cor baseada no tipo
+            const mat = ehBanco ? 'src: #tex-banco' : 'src: #tex-ape';
+            const corParede = ehBanco ? '#aaa' : '#eec';
 
-            const largura = 14;
-            const profundidade = 14;
-            const alturaTotal = 15 + Math.random() * 25;
-            const alturaTerreo = 4; // Altura do Lobby
+            // 1. TÉRREO (LOBBY)
+            criarCaixa(grp, 0, 0.1, 0, 14, 0.2, 14, '#333'); // Chão
+            criarCaixa(grp, 0, 4, 0, 14, 0.2, 14, '#333'); // Teto
+            
+            // Paredes Lobby
+            criarCaixa(grp, 0, 2, -6.5, 14, 4, 0.5, corParede); // Fundo
+            criarCaixa(grp, -6.5, 2, 0, 0.5, 4, 14, corParede); // Esq
+            criarCaixa(grp, 6.5, 2, 0, 0.5, 4, 14, corParede); // Dir
 
-            // 1. TÉRREO (Lobby Aberto para entrar)
-            // Piso interno
-            const chao = document.createElement('a-box');
-            chao.setAttribute('position', `0 0.1 0`);
-            chao.setAttribute('width', largura-1); chao.setAttribute('depth', profundidade-1); 
-            chao.setAttribute('height', 0.2);
-            chao.setAttribute('material', 'src: #tex-chao; repeat: 4 4');
-            grupo.appendChild(chao);
-
-            // Colunas (em vez de paredes fechadas na frente)
-            this.criarColuna(grupo, -6, 2, -6);
-            this.criarColuna(grupo, 6, 2, -6);
-            this.criarColuna(grupo, -6, 2, 6);
-            this.criarColuna(grupo, 6, 2, 6);
-
-            // Parede de Fundo (Lobby)
-            this.criarParede(grupo, 0, 2, -6.5, largura, 4, 0.5);
-            // Tetos do lobby
-            this.criarParede(grupo, 0, 4, 0, largura, 0.5, profundidade);
-
-            // 2. TORRE (A parte de cima)
+            // 2. TORRE
             const torre = document.createElement('a-box');
-            torre.setAttribute('position', `0 ${4 + (alturaTotal/2)} 0`);
-            torre.setAttribute('width', largura);
-            torre.setAttribute('depth', profundidade);
-            torre.setAttribute('height', alturaTotal);
-            torre.setAttribute('material', 'src: #tex-predio; repeat: 2 6');
-            torre.setAttribute('shadow', 'cast: true; receive: true');
-            grupo.appendChild(torre);
+            torre.setAttribute('position', `0 20 0`);
+            torre.setAttribute('width', 14); torre.setAttribute('depth', 14); torre.setAttribute('height', 30);
+            torre.setAttribute('material', `src: #tex-predio; repeat: 2 6; color: ${ehBanco?'#aaf':'#fff'}`);
+            grp.appendChild(torre);
 
-            pai.appendChild(grupo);
-        },
-
-        criarColuna: function(pai, x, y, z) {
-            const col = document.createElement('a-box');
-            col.setAttribute('position', `${x} ${y} ${z}`);
-            col.setAttribute('width', 1); col.setAttribute('depth', 1); col.setAttribute('height', 4);
-            col.setAttribute('color', '#333');
-            pai.appendChild(col);
-        },
-
-        criarParede: function(pai, x, y, z, w, h, d) {
-            const wall = document.createElement('a-box');
-            wall.setAttribute('position', `${x} ${y} ${z}`);
-            wall.setAttribute('width', w); wall.setAttribute('height', h); wall.setAttribute('depth', d);
-            wall.setAttribute('color', '#555');
-            pai.appendChild(wall);
-        },
-
-        // --- NPCS REALISTAS (Estilo Minecraft) ---
-        criarNPC: function (pai, x, z) {
-            const npc = document.createElement('a-entity');
-            npc.setAttribute('position', `${x} 0 ${z}`);
-            npc.setAttribute('npc-walker', '');
-
-            // Grupo visual (para rotacionar o corpo todo)
-            const visual = document.createElement('a-entity');
-            visual.setAttribute('id', 'visual');
+            // 3. O ELEVADOR (No Fundo do Lobby)
+            const tipoElevador = ehBanco ? 'SUBIR_BANCO' : 'SUBIR_APE';
+            const corElevador = ehBanco ? 'blue' : 'gold';
+            criarElevador(grp, 0, 0, -5, tipoElevador, corElevador);
             
-            // Cores de Roupa
-            const corCamisa = ['#1a1a1a', '#003366', '#330000', '#eee'][Math.floor(Math.random()*4)];
-            const corCalca = ['#000', '#222', '#111'][Math.floor(Math.random()*3)];
+            // 4. PLACA
+            const txt = document.createElement('a-text');
+            txt.setAttribute('value', ehBanco ? 'BANCO MATRIX' : 'RESIDENCIAL');
+            txt.setAttribute('color', ehBanco ? 'blue' : 'orange');
+            txt.setAttribute('position', '0 5 7.1');
+            txt.setAttribute('align', 'center'); txt.setAttribute('width', 15);
+            grp.appendChild(txt);
 
-            // Perna Esq
-            this.criarMembro(visual, -0.2, 0.4, 0, 0.15, 0.8, 0.2, corCalca);
-            // Perna Dir
-            this.criarMembro(visual, 0.2, 0.4, 0, 0.15, 0.8, 0.2, corCalca);
-            // Tronco
-            this.criarMembro(visual, 0, 1.1, 0, 0.6, 0.7, 0.3, corCamisa);
-            // Braços
-            this.criarMembro(visual, -0.4, 1.1, 0, 0.15, 0.7, 0.2, corCamisa);
-            this.criarMembro(visual, 0.4, 1.1, 0, 0.15, 0.7, 0.2, corCamisa);
-            // Cabeça
-            const cabeca = document.createElement('a-box');
-            cabeca.setAttribute('position', '0 1.65 0');
-            cabeca.setAttribute('width', 0.25); cabeca.setAttribute('height', 0.25); cabeca.setAttribute('depth', 0.25);
-            cabeca.setAttribute('color', '#ffdbac'); // Pele
-            visual.appendChild(cabeca);
-
-            npc.appendChild(visual);
-            pai.appendChild(npc);
-        },
-
-        criarMembro: function(pai, x, y, z, w, h, d, cor) {
-            const box = document.createElement('a-box');
-            box.setAttribute('position', `${x} ${y} ${z}`);
-            box.setAttribute('width', w); box.setAttribute('height', h); box.setAttribute('depth', d);
-            box.setAttribute('color', cor);
-            pai.appendChild(box);
+            pai.appendChild(grp);
         }
       });
-
-      // ==========================================
-      // 4. IA DOS NPCS (Andar e Girar)
-      // ==========================================
-      AFRAME.registerComponent('npc-walker', {
-        init: function() {
-            this.dir = Math.random() * Math.PI * 2;
-            this.speed = 0.02 + Math.random() * 0.03;
-            this.turnTimer = 0;
-        },
-        tick: function() {
-            const el = this.el;
-            const pos = el.object3D.position;
-            
-            // Move
-            pos.x += Math.sin(this.dir) * this.speed;
-            pos.z += Math.cos(this.dir) * this.speed;
-
-            // Visual Rotation (Olhar para onde anda)
-            const visual = el.querySelector('#visual');
-            if(visual) visual.object3D.rotation.y = this.dir;
-
-            // Timer para mudar de direção
-            this.turnTimer++;
-            if(this.turnTimer > 300) { // A cada 300 frames muda
-                this.dir = Math.random() * Math.PI * 2;
-                this.turnTimer = 0;
-            }
-
-            // Limite do mundo (volta se for longe)
-            if(Math.abs(pos.x) > 80 || Math.abs(pos.z) > 80) {
-                this.dir += Math.PI; // Meia volta
-            }
-        }
-      });
-
     </script>
   </head>
   
   <body>
     <a-entity texture-manager></a-entity>
 
-    <a-scene background="color: #87CEEB" 
-             fog="type: exponential; color: #aaa; density: 0.01"
-             shadow="type: basic">
+    <a-scene background="color: #87CEEB" fog="type: exponential; color: #ccc; density: 0.01">
       
-      <a-entity light="type: directional; color: #fff; intensity: 1; castShadow: true" 
-                position="-20 50 30"></a-entity>
-      <a-entity light="type: ambient; color: #666"></a-entity>
-
-      <a-plane position="0 0 0" rotation="-90 0 0" width="300" height="300" 
-               color="#222"></a-plane>
-
-      <a-entity cidade-realista></a-entity>
+      <a-entity light="type: directional; color: #fff; intensity: 0.8" position="-10 50 20"></a-entity>
+      <a-entity light="type: ambient; color: #555"></a-entity>
 
       <a-entity id="rig" position="0 0 0" gamepad-move>
-        <a-camera position="0 1.7 0" look-controls="pointerLockEnabled: true">
-            <a-cursor color="white" scale="0.5 0.5 0.5" opacity="0.5"></a-cursor>
-            <a-text value="Use o Joystick para andar" position="0 -0.5 -1" align="center" width="1.5" color="yellow"></a-text>
+        <a-camera position="0 1.6 0" look-controls="pointerLockEnabled: true">
+            <a-cursor color="white" scale="0.5 0.5 0.5"></a-cursor>
+            <a-plane id="aviso-tela" position="0 0 -0.1" width="2" height="2" color="black" 
+                     opacity="1" visible="false">
+                <a-text value="CARREGANDO..." align="center" color="white" width="0.2"></a-text>     
+            </a-plane>
         </a-camera>
       </a-entity>
+
+      <a-entity id="cidade-root" visible="true">
+          <a-plane rotation="-90 0 0" width="300" height="300" color="#222"></a-plane>
+          <a-entity cidade-v14></a-entity>
+      </a-entity>
+
+      <a-entity id="interior-root"></a-entity>
 
     </a-scene>
   </body>
 </html>
-
