@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <style>body { margin: 0; overflow: hidden; background-color: #87CEEB; }</style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+<script>
+    // --- 1. CONFIGURAÇÃO DO MUNDO (Cena e Luz) ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB); // Céu Azul Realista
+    scene.fog = new THREE.Fog(0x87CEEB, 10, 80); // Neblina para esconder o fim do mundo
+
+    // Câmeras (Olho Esquerdo e Direito)
+    const cameraL = new THREE.PerspectiveCamera(70, window.innerWidth/2 / window.innerHeight, 0.1, 200);
+    const cameraR = new THREE.PerspectiveCamera(70, window.innerWidth/2 / window.innerHeight, 0.1, 200);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setScissorTest(true);
+    renderer.shadowMap.enabled = true; // Ativar sombras para realismo
+    document.body.appendChild(renderer.domElement);
+
+    // Luz do Sol
+    const luzSol = new THREE.DirectionalLight(0xffffff, 1);
+    luzSol.position.set(50, 100, 50);
+    luzSol.castShadow = true;
+    luzSol.shadow.mapSize.width = 2048; // Sombra nítida
+    luzSol.shadow.mapSize.height = 2048;
+    scene.add(luzSol);
+
+    // Luz Ambiente (para as sombras não ficarem pretas 100%)
+    const luzAmbiente = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+    scene.add(luzAmbiente);
+
+    // --- 2. GERADOR DE TEXTURA PROCEDURAL (O Segredo do Realismo Leve) ---
+    function gerarTexturaPredio() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+
+        // Parede de Concreto
+        ctx.fillStyle = '#AAAAAA'; // Cinza
+        ctx.fillRect(0, 0, 128, 256);
+
+        // Janelas (Vidro)
+        ctx.fillStyle = '#223344'; // Azul escuro vidro
+        for(let y=10; y<256; y+=30) {
+            for(let x=10; x<128; x+=35) {
+                // Desenha janelas aleatórias (algumas luzes apagadas)
+                if(Math.random() > 0.1) ctx.fillRect(x, y, 20, 20);
+            }
+        }
+        
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.magFilter = THREE.NearestFilter; // Mantém pixelado/nítido
+        return tex;
+    }
+
+    // Material Único (Instanced)
+    const materialConcreto = new THREE.MeshStandardMaterial({ 
+        map: gerarTexturaPredio(),
+        roughness: 0.8 
+    });
+
+    // --- 3. CRIANDO A CIDADE ---
+    const geoPredio = new THREE.BoxGeometry(1, 1, 1);
+    
+    // Chão
+    const chaoGeo = new THREE.PlaneGeometry(500, 500);
+    const chaoMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 });
+    const chao = new THREE.Mesh(chaoGeo, chaoMat);
+    chao.rotation.x = -Math.PI / 2;
+    chao.receiveShadow = true;
+    scene.add(chao);
+
+    // Gerar Prédios
+    for(let i=0; i<300; i++) {
+        const predio = new THREE.Mesh(geoPredio, materialConcreto);
+        
+        // Posição Grid
+        const posX = (Math.random() - 0.5) * 150;
+        const posZ = (Math.random() - 0.5) * 150;
+        
+        // Evita criar prédio em cima do jogador (0,0)
+        if(Math.abs(posX) < 5 && Math.abs(posZ) < 5) continue;
+
+        const altura = Math.random() * 15 + 5; // Prédios de 5 a 20 andares
+        
+        predio.position.set(posX, altura/2, posZ);
+        predio.scale.set(4, altura, 4);
+        predio.castShadow = true;
+        predio.receiveShadow = true;
+        scene.add(predio);
+    }
+
+    // --- 4. NPCS (Pessoas) ---
+    const npcs = [];
+    const geoCabeca = new THREE.SphereGeometry(0.3, 8, 8);
+    const geoCorpo = new THREE.BoxGeometry(0.5, 0.8, 0.3);
+    
+    function criarHumano(x, z) {
+        const grupo = new THREE.Group();
+        
+        // Camisa (Cor aleatória)
+        const matRoupa = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
+        const corpo = new THREE.Mesh(geoCorpo, matRoupa);
+        corpo.position.y = 1.0;
+        corpo.castShadow = true;
+        
+        // Cabeça
+        const matPele = new THREE.MeshStandardMaterial({ color: 0xffccaa });
+        const cabeca = new THREE.Mesh(geoCabeca, matPele);
+        cabeca.position.y = 1.6;
+        
+        grupo.add(corpo);
+        grupo.add(cabeca);
+        grupo.position.set(x, 0, z);
+        
+        scene.add(grupo);
+        npcs.push({ mesh: grupo, speed: (Math.random() * 0.05) + 0.02, dir: Math.random() * Math.PI * 2 });
+    }
+
+    // Gera 20 pessoas
+    for(let k=0; k<20; k++) {
+        criarHumano((Math.random()-0.5)*20, (Math.random()-0.5)*20);
+    }
+
+    // --- 5. LOGICA DE MOVIMENTO E VR ---
+    // Simulação de cabeça
+    const dummyCam = new THREE.Object3D();
+    dummyCam.position.set(0, 1.7, 0); // Altura dos olhos (1.70m)
+    scene.add(dummyCam);
+
+    function animate() {
+        requestAnimationFrame(animate);
+
+        // Animação dos NPCs
+        npcs.forEach(npc => {
+            npc.mesh.position.z += Math.cos(npc.dir) * npc.speed;
+            npc.mesh.position.x += Math.sin(npc.dir) * npc.speed;
+            // Se for muito longe, volta (efeito pacman)
+            if(Math.abs(npc.mesh.position.x) > 50) npc.mesh.position.x *= -1;
+            if(Math.abs(npc.mesh.position.z) > 50) npc.mesh.position.z *= -1;
+        });
+
+        // Configura Câmeras VR
+        // Gira a câmera baseado no tempo (teste) ou giroscópio real
+        // Para testar sem giroscopio agora:
+        dummyCam.rotation.y += 0.002; 
+
+        // Posiciona olhos
+        cameraL.position.copy(dummyCam.position);
+        cameraL.quaternion.copy(dummyCam.quaternion);
+        cameraL.translateX(-0.03); // Olho esquerdo
+
+        cameraR.position.copy(dummyCam.position);
+        cameraR.quaternion.copy(dummyCam.quaternion);
+        cameraR.translateX(0.03); // Olho direito
+
+        // Renderiza Esquerda
+        renderer.setViewport(0, 0, window.innerWidth/2, window.innerHeight);
+        renderer.setScissor(0, 0, window.innerWidth/2, window.innerHeight);
+        renderer.render(scene, cameraL);
+
+        // Renderiza Direita
+        renderer.setViewport(window.innerWidth/2, 0, window.innerWidth/2, window.innerHeight);
+        renderer.setScissor(window.innerWidth/2, 0, window.innerWidth/2, window.innerHeight);
+        renderer.render(scene, cameraR);
+    }
+
+    animate();
+</script>
+</body>
+</html>
