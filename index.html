@@ -1,156 +1,101 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Matrix V26 - Realismo Brasileiro</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Matrix V27 - Realismo e Interiores</title>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-
     <script>
-      // ==========================================
-      // 1. GERADOR DE TEXTURAS (Janelas, Lojas, Céu)
-      // ==========================================
-      AFRAME.registerComponent('brazilian-assets', {
-        init: function () {
-          const createTex = (id, color, type) => {
-              const c = document.createElement('canvas'); c.id=id; c.width=256; c.height=256;
-              const ctx = c.getContext('2d');
-              ctx.fillStyle = color; ctx.fillRect(0,0,256,256);
-              
-              if(type === 'predio') {
-                ctx.fillStyle = "#87CEEB"; // Luz de janela
-                for(let y=20; y<256; y+=60) 
-                  for(let x=20; x<256; x+=45) 
-                    if(Math.random()>0.2) ctx.fillRect(x, y, 25, 30);
-              }
-              if(type === 'loja') {
-                ctx.strokeStyle = "#000"; ctx.lineWidth = 5;
-                ctx.strokeRect(10, 50, 236, 150); // Vitrine
-                ctx.fillStyle = "#333"; ctx.fillRect(20, 60, 216, 130);
-              }
-              document.body.appendChild(c);
-          };
-          createTex('tex-apt', '#d2b48c', 'predio');  // Bege/Tijolo
-          createTex('tex-banco', '#4682B4', 'predio'); // Azul Banco
-          createTex('tex-comercio', '#aaa', 'loja');   // Lanchonete/Loja
-        }
-      });
+      let emMovimento = false;
+      let alvoX = 0, alvoZ = 0;
 
-      // ==========================================
-      // 2. CONSTRUTOR URBANO (Zoneamento Brasileiro)
-      // ==========================================
-      AFRAME.registerComponent('city-builder', {
-        init: function () {
-          const scene = this.el;
-          const step = 35; 
-          for (let x = -70; x <= 70; x += step) {
-            for (let z = -70; z <= 70; z += step) {
-              if (Math.abs(x) < 5 && Math.abs(z) < 5) continue;
-              
-              const rand = Math.random();
-              let tipo = "APTO";
-              if (rand > 0.8) tipo = "BANCO";
-              else if (rand > 0.6) tipo = "LANCHONETE";
-              else if (rand > 0.5) tipo = "SHOPPING";
+      // Componente de Movimento Suave por Olhar
+      AFRAME.registerComponent('walk-watch', {
+        tick: function () {
+          const raycaster = this.el.components.raycaster;
+          const intersection = raycaster.getIntersection(document.querySelector('#chao-cidade'));
+          const cursor = document.querySelector('#cursor-visual');
 
-              this.createLot(scene, x, z, tipo);
+          if (intersection && intersection.distance < 15) { // Limite de 15 metros para andar
+            cursor.setAttribute('color', 'lime');
+            alvoX = intersection.point.x;
+            alvoZ = intersection.point.z;
+            emMovimento = true;
+          } else {
+            cursor.setAttribute('color', 'red');
+            emMovimento = false;
+          }
+
+          if (emMovimento) {
+            const rig = document.querySelector('#rig').object3D;
+            const dx = alvoX - rig.position.x;
+            const dz = alvoZ - rig.position.z;
+            const dist = Math.sqrt(dx*dx + dz*dz);
+
+            if (dist > 0.5) { // Se não chegou no ponto, caminha
+              rig.position.x += (dx / dist) * 0.08;
+              rig.position.z += (dz / dist) * 0.08;
             }
           }
-        },
-        createLot: function (pai, x, z, tipo) {
-          const grp = document.createElement('a-entity');
-          grp.setAttribute('position', `${x} 0 ${z}`);
-          
-          let h = 15 + Math.random() * 25;
-          let tex = "#tex-apt";
-          let corBase = "#eee";
-
-          if(tipo === "BANCO") { tex = "#tex-banco"; corBase = "#4682B4"; h = 30; }
-          if(tipo === "LANCHONETE") { tex = "#tex-apt"; corBase = "#ffcc00"; h = 10; }
-          if(tipo === "SHOPPING") { tex = "#tex-banco"; corBase = "#fff"; h = 12; }
-
-          // Prédio Principal
-          const b = document.createElement('a-box');
-          b.setAttribute('position', `0 ${h/2} 0`);
-          b.setAttribute('width', 20); b.setAttribute('depth', 20); b.setAttribute('height', h);
-          b.setAttribute('material', `src: ${tex}; repeat: 2 6`);
-          grp.appendChild(b);
-
-          // Térreo Decorado (Loja/Portaria)
-          const terreo = document.createElement('a-box');
-          terreo.setAttribute('position', '0 2 10.1');
-          terreo.setAttribute('width', 18); terreo.setAttribute('height', 4); terreo.setAttribute('depth', 0.5);
-          terreo.setAttribute('material', 'src: #tex-comercio');
-          terreo.setAttribute('color', corBase);
-          grp.appendChild(terreo);
-
-          // Placa 3D (Estilo Brasileiro)
-          const placa = document.createElement('a-text');
-          placa.setAttribute('value', tipo);
-          placa.setAttribute('position', '0 5 10.3');
-          placa.setAttribute('align', 'center'); placa.setAttribute('width', 18);
-          placa.setAttribute('color', 'black');
-          grp.appendChild(placa);
-
-          pai.appendChild(grp);
         }
       });
 
-      // ==========================================
-      // 3. MOVIMENTO REAL (PASSO A PASSO)
-      // ==========================================
-      AFRAME.registerComponent('real-walk', {
+      // Gerador de NPCs (Humanos)
+      AFRAME.registerComponent('spawn-npcs', {
         init: function () {
-          this.prevY = 0;
-          this.stepSensitivity = 0.08; 
-          this.speed = 0.2;
-          
-          window.addEventListener('devicemotion', (e) => {
-            let acc = e.accelerationIncludingGravity;
-            if(!acc) return;
-            
-            let currentY = acc.y;
-            let delta = Math.abs(currentY - this.prevY);
-
-            if (delta > this.stepSensitivity) {
-              const cam = document.querySelector('[camera]');
-              const rot = cam.getAttribute('rotation').y * (Math.PI / 180);
-              const rig = document.querySelector('#rig').object3D;
-              
-              rig.position.x -= Math.sin(rot) * this.speed;
-              rig.position.z -= Math.cos(rot) * this.speed;
-            }
-            this.prevY = currentY;
-          });
+          for(let i=0; i<20; i++) {
+            let npc = document.createElement('a-box');
+            npc.setAttribute('position', `${(Math.random()-0.5)*100} 0.8 ${(Math.random()-0.5)*100}`);
+            npc.setAttribute('width', 0.6); npc.setAttribute('height', 1.7); npc.setAttribute('depth', 0.4);
+            npc.setAttribute('color', '#333');
+            // Animação simples de caminhada
+            npc.setAttribute('animation', `property: position; to: ${npc.getAttribute('position').x} 0.8 100; dur: ${10000 + Math.random()*20000}; loop: true; easing: linear`);
+            this.el.appendChild(npc);
+          }
         }
       });
     </script>
   </head>
   <body>
-    <a-entity brazilian-assets></a-entity>
-    
-    <a-scene background="color: #87CEEB" fog="type: exponential; color: #a3d0e4; density: 0.01">
+    <a-scene background="color: #87CEEB" fog="type: exponential; color: #a3d0e4; density: 0.015">
       
-      <a-sky color="#87CEEB"></a-sky>
-      <a-entity light="type: directional; color: #FFF; intensity: 1" position="-1 2 1"></a-entity>
-      <a-entity light="type: ambient; color: #BBB"></a-entity>
-
-      <a-entity id="rig" position="0 0.1 0" real-walk>
-        <a-camera look-controls>
-          <a-cursor color="#FF4500"></a-cursor>
+      <a-entity id="rig" position="0 0.1 5">
+        <a-camera look-controls raycaster="objects: #chao-cidade; far: 20" walk-watch>
+          <a-ring id="cursor-visual" position="0 0 -1" radius-inner="0.02" radius-outer="0.03" color="lime"></a-ring>
         </a-camera>
       </a-entity>
 
-      <a-entity id="cidade-root" city-builder>
-        <a-plane rotation="-90 0 0" width="1000" height="1000" color="#333"></a-plane>
-        <a-grid position="0 0.01 0" width="1000" height="1000" static-body material="opacity: 0.1; color: #fff"></a-grid>
+      <a-entity id="mundo" spawn-npcs>
+        <a-plane id="chao-cidade" rotation="-90 0 0" width="1000" height="1000" color="#333"></a-plane>
+        
+        <a-entity position="0 0 -10">
+          <a-box position="0 15 0" width="15" height="30" depth="15" material="opacity: 0.3; transparent: true; color: #87CEEB"></a-box>
+          
+          <a-box position="0 2 0" width="14" height="4" depth="14" color="#eee" material="side: back">
+             <a-box position="0 -1.5 -5" width="6" height="1.2" depth="2" color="#444"></a-box>
+             <a-text value="RECEPCAO" position="0 0 -4.9" align="center" color="white" width="4"></a-text>
+             
+             <a-entity position="5 -2 -5">
+                <a-box width="2.5" height="3.5" depth="0.1" color="#777"></a-box> <a-text value="ELEVADOR" position="0 4 0" align="center" color="black"></a-text>
+             </a-entity>
+          </a-box>
+        </a-entity>
+
+        <a-box position="25 10 -10" width="20" height="20" depth="20" color="red">
+           <a-text value="SHOPPING" position="0 0 10.1" align="center" width="20"></a-text>
+        </a-box>
+
+        <a-box position="-25 15 -10" width="15" height="40" depth="15" color="blue">
+           <a-text value="BANCO" position="0 0 7.6" align="center" width="20"></a-text>
+        </a-box>
       </a-entity>
+
+      <a-entity light="type: ambient; color: #BBB"></a-entity>
+      <a-entity light="type: directional; intensity: 0.6" position="1 1 1"></a-entity>
 
     </a-scene>
 
-    <div onclick="this.style.display='none'" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); color:white; display:flex; align-items:center; justify-content:center; z-index:9999; text-align:center; font-family: sans-serif;">
-       <h1>MATRIX BRASIL VR</h1>
-       <p>1. Coloque no VR BOX<br>2. Toque aqui para iniciar<br>3. Caminhe suavemente para andar</p>
+    <div style="position:fixed; bottom:20px; width:100%; text-align:center; color:white; font-family:sans-serif; pointer-events:none;">
+      OLHE PARA O CHÃO PERTO DE VOCÊ PARA CAMINHAR<br>
+      (Círculo Verde = Anda | Círculo Vermelho = Longe demais)
     </div>
   </body>
 </html>
-
