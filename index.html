@@ -1,128 +1,120 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Matrix V22 - Quarteirões Realistas</title>
+    <title>Matrix V25 - Real Walking System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+
     <script>
-      // --- GERADOR DE TEXTURAS ---
-      AFRAME.registerComponent('urban-assets', {
+      let emTransicao = false;
+
+      // ==========================================
+      // SISTEMA DE CAMINHADA REAL (ACELERÓMETRO)
+      // ==========================================
+      AFRAME.registerComponent('real-walk', {
         init: function () {
-          const createTex = (id, color, isWindow) => {
-              const c = document.createElement('canvas'); c.id=id; c.width=128; c.height=256;
-              const ctx = c.getContext('2d');
-              ctx.fillStyle = color; ctx.fillRect(0,0,128,256);
-              if(isWindow) {
-                ctx.fillStyle = "#ffffaa";
-                for(let x=10; x<128; x+=30) 
-                  for(let y=10; y<256; y+=40) 
-                    if(Math.random()>0.2) ctx.fillRect(x, y, 15, 20);
-              }
-              document.body.appendChild(c);
+          this.prevAcc = 0;
+          this.stepThreshold = 1.5; // Sensibilidade do passo
+          this.walkingSpeed = 0.15;
+          this.isWalking = false;
+          
+          // Pedir permissão para sensores no iOS/Android moderno
+          if (typeof DeviceMotionEvent.requestPermission === 'function') {
+            window.addEventListener('click', () => {
+              DeviceMotionEvent.requestPermission();
+            });
+          }
+        },
+        tick: function () {
+          if (emTransicao) return;
+
+          // Captura a rotação da câmara (para onde olhas)
+          const cam = document.querySelector('[camera]');
+          const rotation = cam.object3D.rotation.y;
+          const rig = this.el.object3D;
+
+          // Lógica de detecção de movimento do telemóvel (Passo real)
+          window.ondevicemotion = (event) => {
+            let acc = event.accelerationIncludingGravity;
+            let currentAcc = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+            let deltaAcc = Math.abs(currentAcc - this.prevAcc);
+            
+            // Se o telemóvel balançar como um passo humano
+            if (deltaAcc > this.stepThreshold) {
+              const moveX = Math.sin(rotation) * this.walkingSpeed;
+              const moveZ = Math.cos(rotation) * this.walkingSpeed;
+              
+              rig.position.x -= moveX;
+              rig.position.z -= moveZ;
+            }
+            this.prevAcc = currentAcc;
           };
-          createTex('tex-predio', '#1a1a1a', true);
-          createTex('tex-calcada', '#444', false);
         }
       });
 
-      // --- LÓGICA DE CIDADE ORGANIZADA ---
-      AFRAME.registerComponent('city-grid', {
+      // ==========================================
+      // GERADOR DE CIDADE ORGANIZADA (V22)
+      // ==========================================
+      AFRAME.registerComponent('city-logic', {
         init: function () {
           const scene = this.el;
-          const numQuarteiroes = 6; 
-          const tamanhoQuarteirao = 40; // Espaço do bloco
-          const larguraRua = 15;      // Espaço vazio entre prédios
-
-          for (let qX = -numQuarteiroes; qX <= numQuarteiroes; qX++) {
-            for (let qZ = -numQuarteiroes; qZ <= numQuarteiroes; qZ++) {
-              
-              // Calcula a posição do quarteirão
-              let posX = qX * (tamanhoQuarteirao + larguraRua);
-              let posZ = qZ * (tamanhoQuarteirao + larguraRua);
-
-              // Pula o centro absoluto
-              if (Math.abs(qX) < 1 && Math.abs(qZ) < 1) continue;
-
-              // Determina o tipo pelo local (Centro = Comercial, Longe = Residencial)
-              let distanciaCentro = Math.sqrt(qX*qX + qZ*qZ);
-              let tipo = (distanciaCentro < 2.5) ? "COMERCIAL" : "RESIDENCIAL";
-              
-              if (qX === 1 && qZ === 1) tipo = "SEU_APTO";
-
-              this.gerarQuarteirao(scene, posX, posZ, tipo, tamanhoQuarteirao);
+          for (let qX = -4; qX <= 4; qX++) {
+            for (let qZ = -4; qZ <= 4; qZ++) {
+              if (qX === 0 && qZ === 0) continue;
+              const x = qX * 55;
+              const z = qZ * 55;
+              this.createBlock(scene, x, z);
             }
           }
         },
-
-        gerarQuarteirao: function (pai, baseX, baseZ, tipoGeral, tam) {
-          // Cada quarteirão terá 4 prédios (2x2)
-          const offsets = [-10, 10];
+        createBlock: function(scene, x, z) {
+          const block = document.createElement('a-box');
+          block.setAttribute('position', `${x} 0.05 ${z}`);
+          block.setAttribute('width', 35); block.setAttribute('depth', 35); block.setAttribute('height', 0.1);
+          block.setAttribute('color', '#222');
           
-          offsets.forEach(offX => {
-            offsets.forEach(offZ => {
-              const x = baseX + offX;
-              const z = baseZ + offZ;
-              
-              // Sorteia tipo específico dentro do zoneamento
-              let tipoSub = "LOJA";
-              if (tipoGeral === "COMERCIAL") {
-                tipoSub = Math.random() > 0.5 ? "BANCO" : "SHOPPING";
-              } else {
-                tipoSub = "APARTAMENTO";
-              }
-              if (tipoGeral === "SEU_APTO") tipoSub = "SEU_APTO";
-
-              this.criarPredio(pai, x, z, tipoSub);
-            });
-          });
-
-          // Cria a calçada embaixo do quarteirão
-          const calcada = document.createElement('a-box');
-          calcada.setAttribute('position', `${baseX} 0.05 ${baseZ}`);
-          calcada.setAttribute('width', tam); calcada.setAttribute('depth', tam); calcada.setAttribute('height', 0.1);
-          calcada.setAttribute('color', '#333');
-          pai.appendChild(calcada);
-        },
-
-        criarPredio: function (pai, x, z, tipo) {
-          const h = (tipo === "SHOPPING") ? 15 : 25 + Math.random() * 25;
-          const w = 15;
-
-          const b = document.createElement('a-box');
-          b.setAttribute('position', `${x} ${h/2} ${z}`);
-          b.setAttribute('width', w); b.setAttribute('depth', w); b.setAttribute('height', h);
-          b.setAttribute('material', 'src: #tex-predio; repeat: 2 6');
-          
-          // Placa indicativa
-          const cores = { "BANCO": "blue", "SHOPPING": "red", "APARTAMENTO": "gray", "SEU_APTO": "green" };
-          const moldura = document.createElement('a-box');
-          moldura.setAttribute('position', `0 ${-h/2 + 2} ${w/2 + 0.1}`);
-          moldura.setAttribute('width', 8); moldura.setAttribute('height', 2); moldura.setAttribute('depth', 0.2);
-          moldura.setAttribute('color', cores[tipo] || "black");
-          
-          const txt = document.createElement('a-text');
-          txt.setAttribute('value', tipo); txt.setAttribute('align', 'center'); txt.setAttribute('width', 10);
-          txt.setAttribute('position', '0 0 0.2');
-          moldura.appendChild(txt);
-          b.appendChild(moldura);
-
-          pai.appendChild(b);
+          // Prédios simples para performance
+          for(let i=0; i<4; i++){
+             const p = document.createElement('a-box');
+             const px = (i < 2 ? -10 : 10);
+             const pz = (i % 2 === 0 ? -10 : 10);
+             p.setAttribute('position', `${px} 15 ${pz}`);
+             p.setAttribute('width', 15); p.setAttribute('depth', 15); p.setAttribute('height', 30);
+             p.setAttribute('color', '#1a1a1a');
+             block.appendChild(p);
+          }
+          scene.appendChild(block);
         }
       });
     </script>
   </head>
   <body>
-    <a-entity urban-assets></a-entity>
-    <a-scene background="color: #111" fog="type: exponential; color: #2c3e50; density: 0.01">
+    <a-scene background="color: #050505" fog="type: exponential; color: #111; density: 0.02">
       
-      <a-entity id="rig" position="0 0.2 0" gamepad-move>
-        <a-camera><a-cursor color="lime"></a-cursor></a-camera>
+      <a-entity id="rig" position="0 0.2 0" real-walk>
+        <a-camera look-controls>
+          <a-cursor color="lime"></a-cursor>
+          <a-plane id="fade" position="0 0 -0.1" width="2" height="2" color="black" opacity="0" transparent="true"></a-plane>
+        </a-camera>
       </a-entity>
 
-      <a-entity id="cidade-root" city-grid>
-        <a-plane rotation="-90 0 0" width="1000" height="1000" color="#111"></a-plane>
+      <a-entity id="cidade-root" city-logic>
+        <a-plane rotation="-90 0 0" width="2000" height="2000" color="#0a0a0a"></a-plane>
       </a-entity>
 
     </a-scene>
+
+    <div style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); color: lime; font-family: monospace; text-align: center; background: rgba(0,0,0,0.8); padding: 10px; border: 1px solid lime;">
+      DÁ UM PASSO FÍSICO PARA ANDAR<br>
+      (Clica no ecrã para ativar sensores)
+    </div>
+
+    <script>
+      // Ativação por toque para navegadores mobile
+      window.addEventListener('click', () => {
+        document.querySelector('a-scene').enterVR();
+      });
+    </script>
   </body>
 </html>
 
