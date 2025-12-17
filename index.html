@@ -1,12 +1,10 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Matrix V21 - Lojas, Bancos e Shoppings</title>
+    <title>Matrix V22 - Quarteirões Realistas</title>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
     <script>
-      let emTransicao = false;
-
-      // --- 1. GERADOR DE TEXTURAS ---
+      // --- GERADOR DE TEXTURAS ---
       AFRAME.registerComponent('urban-assets', {
         init: function () {
           const createTex = (id, color, isWindow) => {
@@ -22,118 +20,107 @@
               document.body.appendChild(c);
           };
           createTex('tex-predio', '#1a1a1a', true);
-          createTex('tex-loja', '#333', false);
+          createTex('tex-calcada', '#444', false);
         }
       });
 
-      // --- 2. GERADOR DE CIDADE COM ZONEAMENTO ---
-      AFRAME.registerComponent('city-logic', {
+      // --- LÓGICA DE CIDADE ORGANIZADA ---
+      AFRAME.registerComponent('city-grid', {
         init: function () {
           const scene = this.el;
-          const gridSize = 90;
-          const step = 30;
+          const numQuarteiroes = 6; 
+          const tamanhoQuarteirao = 40; // Espaço do bloco
+          const larguraRua = 15;      // Espaço vazio entre prédios
 
-          for (let x = -gridSize; x <= gridSize; x += step) {
-            for (let z = -gridSize; z <= gridSize; z += step) {
-              if (Math.abs(x) < 5 && Math.abs(z) < 5) continue;
+          for (let qX = -numQuarteiroes; qX <= numQuarteiroes; qX++) {
+            for (let qZ = -numQuarteiroes; qZ <= numQuarteiroes; qZ++) {
               
-              // Sorteio de Tipo de Prédio
-              const rand = Math.random();
-              let tipo = "LOJA";
-              if (rand > 0.8) tipo = "BANCO";
-              else if (rand > 0.6) tipo = "SHOPPING";
-              else if (rand > 0.4) tipo = "APARTAMENTO";
-              
-              // O Seu Prédio específico
-              if (x === 30 && z === -30) tipo = "SEU_APTO";
+              // Calcula a posição do quarteirão
+              let posX = qX * (tamanhoQuarteirao + larguraRua);
+              let posZ = qZ * (tamanhoQuarteirao + larguraRua);
 
-              this.createBuilding(scene, x, z, tipo);
+              // Pula o centro absoluto
+              if (Math.abs(qX) < 1 && Math.abs(qZ) < 1) continue;
+
+              // Determina o tipo pelo local (Centro = Comercial, Longe = Residencial)
+              let distanciaCentro = Math.sqrt(qX*qX + qZ*qZ);
+              let tipo = (distanciaCentro < 2.5) ? "COMERCIAL" : "RESIDENCIAL";
+              
+              if (qX === 1 && qZ === 1) tipo = "SEU_APTO";
+
+              this.gerarQuarteirao(scene, posX, posZ, tipo, tamanhoQuarteirao);
             }
           }
         },
 
-        createBuilding: function (pai, x, z, tipo) {
-          const grp = document.createElement('a-entity');
-          grp.setAttribute('position', `${x} 0 ${z}`);
+        gerarQuarteirao: function (pai, baseX, baseZ, tipoGeral, tam) {
+          // Cada quarteirão terá 4 prédios (2x2)
+          const offsets = [-10, 10];
           
-          const h = (tipo === "SHOPPING") ? 15 : 20 + Math.random() * 30;
-          const w = (tipo === "SHOPPING") ? 25 : 18;
+          offsets.forEach(offX => {
+            offsets.forEach(offZ => {
+              const x = baseX + offX;
+              const z = baseZ + offZ;
+              
+              // Sorteia tipo específico dentro do zoneamento
+              let tipoSub = "LOJA";
+              if (tipoGeral === "COMERCIAL") {
+                tipoSub = Math.random() > 0.5 ? "BANCO" : "SHOPPING";
+              } else {
+                tipoSub = "APARTAMENTO";
+              }
+              if (tipoGeral === "SEU_APTO") tipoSub = "SEU_APTO";
 
-          // Torre do Prédio
+              this.criarPredio(pai, x, z, tipoSub);
+            });
+          });
+
+          // Cria a calçada embaixo do quarteirão
+          const calcada = document.createElement('a-box');
+          calcada.setAttribute('position', `${baseX} 0.05 ${baseZ}`);
+          calcada.setAttribute('width', tam); calcada.setAttribute('depth', tam); calcada.setAttribute('height', 0.1);
+          calcada.setAttribute('color', '#333');
+          pai.appendChild(calcada);
+        },
+
+        criarPredio: function (pai, x, z, tipo) {
+          const h = (tipo === "SHOPPING") ? 15 : 25 + Math.random() * 25;
+          const w = 15;
+
           const b = document.createElement('a-box');
-          b.setAttribute('position', `0 ${h/2} 0`);
+          b.setAttribute('position', `${x} ${h/2} ${z}`);
           b.setAttribute('width', w); b.setAttribute('depth', w); b.setAttribute('height', h);
           b.setAttribute('material', 'src: #tex-predio; repeat: 2 6');
-          grp.appendChild(b);
-
-          // Térreo (Fachada)
-          const facade = document.createElement('a-box');
-          facade.setAttribute('position', `0 2 ${w/2}`);
-          facade.setAttribute('width', w - 2); facade.setAttribute('height', 4); facade.setAttribute('depth', 0.5);
           
-          // Cores das lojas/shoppings
-          let cor = "#444";
-          let label = "STORE";
-          if (tipo === "BANCO") { cor = "#003366"; label = "BANK"; }
-          if (tipo === "SHOPPING") { cor = "#990000"; label = "MALL"; }
-          if (tipo === "APARTAMENTO") { cor = "#555"; label = "HOUSE"; }
-          if (tipo === "SEU_APTO") { cor = "#006600"; label = "YOUR HOME"; }
-
-          facade.setAttribute('color', cor);
-          grp.appendChild(facade);
-
-          // Texto da Placa
+          // Placa indicativa
+          const cores = { "BANCO": "blue", "SHOPPING": "red", "APARTAMENTO": "gray", "SEU_APTO": "green" };
+          const moldura = document.createElement('a-box');
+          moldura.setAttribute('position', `0 ${-h/2 + 2} ${w/2 + 0.1}`);
+          moldura.setAttribute('width', 8); moldura.setAttribute('height', 2); moldura.setAttribute('depth', 0.2);
+          moldura.setAttribute('color', cores[tipo] || "black");
+          
           const txt = document.createElement('a-text');
-          txt.setAttribute('value', label);
-          txt.setAttribute('position', `0 2.5 ${w/2 + 0.3}`);
-          txt.setAttribute('align', 'center'); txt.setAttribute('width', 15);
-          grp.appendChild(txt);
+          txt.setAttribute('value', tipo); txt.setAttribute('align', 'center'); txt.setAttribute('width', 10);
+          txt.setAttribute('position', '0 0 0.2');
+          moldura.appendChild(txt);
+          b.appendChild(moldura);
 
-          // Lógica de Elevador (Apenas Bancos e Apartamentos)
-          if (tipo === "BANCO" || tipo === "APARTAMENTO" || tipo === "SEU_APTO") {
-            window.criarCabineElevador(grp, 0, 0, w/2 - 2, tipo);
-          }
-
-          pai.appendChild(grp);
+          pai.appendChild(b);
         }
       });
-
-      // --- 3. LÓGICA DE INTERIORES ESPECÍFICOS ---
-      function gerarInteriorEspecial(tipo) {
-          const pai = document.querySelector('#interior-root');
-          pai.innerHTML = '';
-          
-          if (tipo === "BANCO") {
-              // Interior do Banco com ATMs
-              criarCaixa(pai, 0, 100, 0, 10, 0.2, 10, '#708090'); // Piso Mármore
-              for(let i=-3; i<=3; i+=2) {
-                  const atm = criarCaixa(pai, i, 101, -4, 1, 2, 0.5, '#111');
-                  const tela = criarCaixa(atm, 0, 0.3, 0.3, 0.8, 0.4, 0.1, '#00ff00');
-              }
-          } else if (tipo === "SEU_APTO" || tipo === "APARTAMENTO") {
-              // Chama o gerador de corredor/apto que criamos antes
-              irParaCorredor(); 
-              return;
-          }
-          
-          // Elevador de volta genérico para o Banco
-          window.criarCabineElevador(pai, 0, 100, 4, 'RUA');
-      }
     </script>
   </head>
   <body>
     <a-entity urban-assets></a-entity>
-    <a-scene background="color: #000" fog="type: exponential; color: #111; density: 0.015">
+    <a-scene background="color: #111" fog="type: exponential; color: #2c3e50; density: 0.01">
       
-      <a-entity id="rig" position="0 0.2 0">
+      <a-entity id="rig" position="0 0.2 0" gamepad-move>
         <a-camera><a-cursor color="lime"></a-cursor></a-camera>
       </a-entity>
 
-      <a-entity id="cidade-root" city-logic>
+      <a-entity id="cidade-root" city-grid>
         <a-plane rotation="-90 0 0" width="1000" height="1000" color="#111"></a-plane>
       </a-entity>
-
-      <a-entity id="interior-root"></a-entity>
 
     </a-scene>
   </body>
