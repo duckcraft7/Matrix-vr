@@ -2,41 +2,64 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Fazenda VR - Mobile Proximidade</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minha Fazenda VR</title>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
 </head>
 <body>
 
     <a-scene>
         <a-assets>
-            <a-asset-item id="vaca-model" src="vaca.glb"></a-asset-item>
-            <a-asset-item id="galinha-model" src="galinha.glb"></a-asset-item>
-            <a-asset-item id="porco-model" src="porco.glb"></a-asset-item>
+            <a-asset-item id="vaca-glb" src="vaca.glb"></a-asset-item>
+            <a-asset-item id="galinha-glb" src="galinha.glb"></a-asset-item>
+            <a-asset-item id="porco-glb" src="porco.glb"></a-asset-item>
         </a-assets>
 
-        <a-sky color="#87CEEB"></a-sky>
+        <a-sky color="#87CEEB"></a-sky> <a-plane id="chao" 
+                 position="0 0 0" 
+                 rotation="-90 0 0" 
+                 width="100" height="100" 
+                 color="#7CFC00" 
+                 class="movimento">
+        </a-plane>
 
-        <a-plane id="chao" position="0 0 0" rotation="-90 0 0" width="100" height="100" color="#7CFC00" class="movimento"></a-plane>
-
-        <a-entity id="vaca" gltf-model="#vaca-model" position="-3 0 -5" class="interativel"
-            animation__click="property: position; to: -3 0.5 -5; dur: 200; dir: alternate; loop: 2; startEvents: click">
+        <a-entity id="vaca-animal"
+                  gltf-model="#vaca-glb" 
+                  position="-4 0 -6" 
+                  scale="0.4 0.4 0.4"
+                  class="interativel"
+                  animation__click="property: position; to: -4 0.5 -6; dur: 300; dir: alternate; loop: 2; startEvents: click">
         </a-entity>
 
-        <a-entity id="galinha" gltf-model="#galinha-model" position="0 0 -4" scale="0.5 0.5 0.5" class="interativel"
-            animation__click="property: scale; to: 0.6 0.6 0.6; dur: 200; dir: alternate; loop: 2; startEvents: click">
+        <a-entity id="galinha-animal"
+                  gltf-model="#galinha-glb" 
+                  position="0 0 -3" 
+                  scale="0.1 0.1 0.1"
+                  class="interativel"
+                  animation__click="property: scale; to: 0.12 0.12 0.12; dur: 200; dir: alternate; loop: 2; startEvents: click">
         </a-entity>
 
-        <a-entity id="porco" gltf-model="#porco-model" position="3 0 -5" scale="0.8 0.8 0.8" class="interativel"
-            animation__click="property: rotation; to: 0 360 0; dur: 500; startEvents: click">
+        <a-entity id="porco-animal"
+                  gltf-model="#porco-glb" 
+                  position="3 0 -5" 
+                  scale="0.25 0.25 0.25"
+                  class="interativel"
+                  animation__click="property: rotation; to: 0 360 0; dur: 1000; startEvents: click">
         </a-entity>
 
-        <a-entity id="rig" position="0 0 0"> <a-entity camera look-controls position="0 1.6 0">
-                <a-entity cursor="fuse: true; fuseTimeout: 1000"
+        <a-light type="ambient" color="#FFF" intensity="0.7"></a-light>
+        <a-light type="directional" color="#FFF" intensity="0.6" position="-1 2 1"></a-light>
+
+        <a-entity id="rig" position="0 0 0">
+            <a-entity camera look-controls position="0 1.6 0">
+                <a-entity cursor="fuse: true; fuseTimeout: 1200"
                           position="0 0 -1"
                           geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03"
-                          material="color: #FF0000; shader: flat"
-                          raycaster="objects: .interativel, .movimento; far: 3">
-                    <a-animation begin="fusing" easing="ease-in" attribute="scale" from="1 1 1" to="0.1 0.1 0.1" dur="1000"></a-animation>
+                          material="color: white; shader: flat"
+                          raycaster="objects: .interativel, .movimento; far: 4">
+                    
+                    <a-mixin id="cursor-anim"></a-mixin>
+                    <a-animation begin="fusing" easing="ease-in" attribute="scale" from="1 1 1" to="0.1 0.1 0.1" dur="1200"></a-animation>
                     <a-animation begin="mouseleave" easing="ease-in" attribute="scale" from="0.1 0.1 0.1" to="1 1 1" dur="100"></a-animation>
                 </a-entity>
             </a-entity>
@@ -47,25 +70,27 @@
     <script>
         const player = document.querySelector('#rig');
 
-        // Lógica de Movimento: Andar até onde você olha no chão
+        // Lógica para caminhar: Olhe para o chão perto de você e espere o cursor carregar
         document.querySelector('#chao').addEventListener('click', function (evt) {
-            // Pega a posição onde você clicou no chão
-            let novoPonto = evt.detail.intersection.point;
-            // Move o jogador (rig) para lá (mantendo a altura Y em 0)
+            let pontoDestino = evt.detail.intersection.point;
+            
+            // Move o corpo do jogador para onde ele olhou no chão
             player.setAttribute('animation', {
                 property: 'position',
-                to: `${novoPonto.x} 0 ${novoPonto.z}`,
-                dur: 2000,
+                to: `${pontoDestino.x} 0 ${pontoDestino.z}`,
+                dur: 1500,
                 easing: 'easeInOutQuad'
             });
         });
 
-        // Feedback visual no console
+        // Lógica para "alimentar" (clicar nos animais)
         document.querySelectorAll('.interativel').forEach(animal => {
             animal.addEventListener('click', function () {
-                alert("Você alimentou o " + this.id + "!");
+                console.log("Interagiu com: " + this.id);
+                // Aqui você pode adicionar lógica de pontuação no futuro
             });
         });
     </script>
 </body>
 </html>
+
