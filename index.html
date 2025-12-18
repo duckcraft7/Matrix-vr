@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minha Fazenda VR - Versão Final</title>
+    <title>Fazenda VR - Ajuste de Escalas</title>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
 </head>
 <body>
@@ -28,7 +28,7 @@
         <a-entity id="vaca-animal"
                   gltf-model="#vaca-glb" 
                   position="-4 0 -7" 
-                  scale="0.01 0.01 0.01"
+                  scale="0.2 0.2 0.2"
                   class="interativel"
                   animation__click="property: position; to: -4 0.5 -7; dur: 300; dir: alternate; loop: 2; startEvents: click">
         </a-entity>
@@ -44,7 +44,7 @@
         <a-entity id="porco-animal"
                   gltf-model="#porco-glb" 
                   position="4 0 -6" 
-                  scale="0.0005 0.0005 0.0005"
+                  scale="0.05 0.05 0.05"
                   class="interativel"
                   animation__click="property: rotation; to: 0 360 0; dur: 1000; startEvents: click">
         </a-entity>
@@ -59,7 +59,7 @@
                           position="0 0 -1"
                           geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03"
                           material="color: white; shader: flat"
-                          raycaster="objects: .interativel, .movimento; far: 4">
+                          raycaster="objects: .interativel, .movimento; far: 5">
                     
                     <a-animation begin="fusing" easing="ease-in" attribute="scale" from="1 1 1" to="0.1 0.1 0.1" dur="1200"></a-animation>
                     <a-animation begin="mouseleave" easing="ease-in" attribute="scale" from="0.1 0.1 0.1" to="1 1 1" dur="100"></a-animation>
@@ -73,29 +73,24 @@
     <script>
         const player = document.querySelector('#rig');
 
-        // FUNÇÃO PARA ANDAR: Move o jogador quando ele olha para o chão
+        // Sistema para andar olhando para o chão
         document.querySelector('#chao').addEventListener('click', function (evt) {
-            // Pega as coordenadas X e Z de onde você olhou no chão
-            let destino = evt.detail.intersection.point;
-            
-            // Cria a animação de movimento até o ponto
+            let ponto = evt.detail.intersection.point;
             player.setAttribute('animation', {
                 property: 'position',
-                to: `${destino.x} 0 ${destino.z}`,
+                to: `${ponto.x} 0 ${ponto.z}`,
                 dur: 1500,
                 easing: 'easeInOutQuad'
             });
         });
 
-        // FUNÇÃO DE INTERAÇÃO COM ANIMAIS
+        // Clique nos animais
         document.querySelectorAll('.interativel').forEach(animal => {
             animal.addEventListener('click', function () {
-                // Aqui você pode colocar sons ou somar pontos
-                console.log("Animal interagido: " + this.id);
+                console.log("Interagindo com " + this.id);
             });
         });
     </script>
 
 </body>
 </html>
-
