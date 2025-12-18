@@ -1,150 +1,71 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
-  <meta charset="utf-8" />
-  <title>VR WebXR nativo (Chrome) — Cidade</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-  <style>
-    html,body { margin:0; height:100%; background:#000; }
-    #ui { position:fixed; top:10px; left:10px; color:#fff; font-family:system-ui, sans-serif; z-index:2; }
-    #ui button { padding:8px 12px; margin-right:10px; }
-    #msg { margin-top:8px; opacity:.85; }
-  </style>
+    <meta charset="UTF-8">
+    <title>Fazenda VR - Mobile Proximidade</title>
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
 </head>
 <body>
-<div id="ui">
-  <button id="vrBtn" disabled>Enter VR</button>
-  <span>Olhe acima do horizonte para andar</span>
-  <div id="msg"></div>
-</div>
 
-<script type="module">
-import * as THREE from 'https://unpkg.com/three@0.161.0/build/three.module.js';
-import { XRButton } from 'https://unpkg.com/three@0.161.0/examples/jsm/webxr/XRButton.js';
+    <a-scene>
+        <a-assets>
+            <a-asset-item id="vaca-model" src="vaca.glb"></a-asset-item>
+            <a-asset-item id="galinha-model" src="galinha.glb"></a-asset-item>
+            <a-asset-item id="porco-model" src="porco.glb"></a-asset-item>
+        </a-assets>
 
-// Cena básica
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x80a9ff); // céu azul simples
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1500);
-const renderer = new THREE.WebGLRenderer({ antialias:false, powerPreference:'high-performance' });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-document.body.appendChild(renderer.domElement);
+        <a-sky color="#87CEEB"></a-sky>
 
-// Ativa WebXR (nativo do Chrome)
-renderer.xr.enabled = true;
+        <a-plane id="chao" position="0 0 0" rotation="-90 0 0" width="100" height="100" color="#7CFC00" class="movimento"></a-plane>
 
-// Botão VR nativo (WebXR “immersive-vr”)
-const chromeVRButton = XRButton.createButton(renderer, { requiredFeatures: [ 'local-floor' ] });
-chromeVRButton.style.position = 'fixed';
-chromeVRButton.style.right = '10px';
-chromeVRButton.style.top = '10px';
-document.body.appendChild(chromeVRButton);
+        <a-entity id="vaca" gltf-model="#vaca-model" position="-3 0 -5" class="interativel"
+            animation__click="property: position; to: -3 0.5 -5; dur: 200; dir: alternate; loop: 2; startEvents: click">
+        </a-entity>
 
-// Mensagens e verificação de suporte
-const msgEl = document.getElementById('msg');
-const vrBtn = document.getElementById('vrBtn');
+        <a-entity id="galinha" gltf-model="#galinha-model" position="0 0 -4" scale="0.5 0.5 0.5" class="interativel"
+            animation__click="property: scale; to: 0.6 0.6 0.6; dur: 200; dir: alternate; loop: 2; startEvents: click">
+        </a-entity>
 
-async function checkXR(){
-  if (!('xr' in navigator)) {
-    msgEl.textContent = 'WebXR não suportado neste navegador ou contexto (use Chrome Android em HTTPS).';
-    return;
-  }
-  const ok = await navigator.xr.isSessionSupported('immersive-vr');
-  if (ok) {
-    msgEl.textContent = 'WebXR pronto. Use o botão “Enter VR” (acima à direita) para iniciar o modo VR.';
-    vrBtn.disabled = false;
-  } else {
-    msgEl.textContent = 'Seu dispositivo/navegador não reporta suporte a “immersive-vr”.';
-  }
-}
-checkXR();
+        <a-entity id="porco" gltf-model="#porco-model" position="3 0 -5" scale="0.8 0.8 0.8" class="interativel"
+            animation__click="property: rotation; to: 0 360 0; dur: 500; startEvents: click">
+        </a-entity>
 
-// Luzes e chão
-const hemi = new THREE.HemisphereLight(0xffffff, 0x202020, 0.9); scene.add(hemi);
-const sun = new THREE.DirectionalLight(0xfff6d5, 0.9); sun.position.set(120,200,-80); scene.add(sun);
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(5000,5000), new THREE.MeshStandardMaterial({ color:0x2c2c2c }));
-ground.rotation.x = -Math.PI/2; scene.add(ground);
+        <a-entity id="rig" position="0 0 0"> <a-entity camera look-controls position="0 1.6 0">
+                <a-entity cursor="fuse: true; fuseTimeout: 1000"
+                          position="0 0 -1"
+                          geometry="primitive: ring; radiusInner: 0.02; radiusOuter: 0.03"
+                          material="color: #FF0000; shader: flat"
+                          raycaster="objects: .interativel, .movimento; far: 3">
+                    <a-animation begin="fusing" easing="ease-in" attribute="scale" from="1 1 1" to="0.1 0.1 0.1" dur="1000"></a-animation>
+                    <a-animation begin="mouseleave" easing="ease-in" attribute="scale" from="0.1 0.1 0.1" to="1 1 1" dur="100"></a-animation>
+                </a-entity>
+            </a-entity>
+        </a-entity>
 
-// Retículo + vignette (opcional)
-const reticle = new THREE.Mesh(new THREE.RingGeometry(0.0025,0.0045,32), new THREE.MeshBasicMaterial({ color:0xffffff }));
-reticle.position.set(0,0,-0.6);
-camera.add(reticle);
-const vignette = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.MeshBasicMaterial({ color:0x000000, opacity:0.22, transparent:true }));
-vignette.position.set(0,0,-0.9); vignette.renderOrder = 9999; vignette.visible = false;
-camera.add(vignette);
-scene.add(camera);
+    </a-scene>
 
-// Cidade simples (chunks) — mesmo conceito anterior, reduzido para demo
-const City = { size: 100, radius: 1, chunks: new Map() };
-function makeRNG(seedVal=12345){ const s={v:seedVal>>>0}; return ()=>{ s.v=(s.v*1664525+1013904223)>>>0; return s.v/4294967296; }; }
-function createBuilding(pos,w,d,h,color){
-  const shell = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), new THREE.MeshStandardMaterial({ color }));
-  shell.position.copy(pos); scene.add(shell);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(w-0.8,d-0.8), new THREE.MeshStandardMaterial({ color:0xdddddd }));
-  floor.rotation.x = -Math.PI/2; floor.position.set(pos.x, pos.y - h/2 + 0.02, pos.z); scene.add(floor);
-  return { shell, floor, pos };
-}
-function generateChunk(cx,cz){
-  const group = new THREE.Group(); group.name = `chunk_${cx}_${cz}`; scene.add(group);
-  const rng = makeRNG((cx*73856093)^(cz*19349663)^12345);
-  const originX=cx*City.size, originZ=cz*City.size;
-  // Ruas
-  const roadMat = new THREE.MeshStandardMaterial({ color:0x1e1e1e });
-  const lane = new THREE.Mesh(new THREE.PlaneGeometry(City.size,8), roadMat);
-  lane.rotation.x=-Math.PI/2; lane.position.set(originX+City.size/2,0.01,originZ+City.size/2); group.add(lane);
-  const lane2 = lane.clone(); lane2.geometry = new THREE.PlaneGeometry(8,City.size); group.add(lane2);
-  // Lotes e prédios
-  const buildings=[];
-  const lotOffsets=[{x:-30,z:-30},{x:0,z:-30},{x:30,z:-30},{x:-30,z:0},{x:30,z:0},{x:-30,z:30},{x:0,z:30},{x:30,z:30}];
-  for(const off of lotOffsets){
-    const lx = originX + City.size/2 + off.x + (rng()-0.5)*6;
-    const lz = originZ + City.size/2 + off.z + (rng()-0.5)*6;
-    const h = 6 + Math.floor(rng()*10);
-    const b = createBuilding(new THREE.Vector3(lx,h/2,lz), 12, 10, h, new THREE.Color().setHSL(0.55 + rng()*0.1,0.3 + rng()*0.2,0.55 + rng()*0.2));
-    buildings.push(b);
-  }
-  return { group, buildings };
-}
-City.ensure = function(cx,cz){ const key=`${cx},${cz}`; if(this.chunks.has(key)) return this.chunks.get(key); const c=generateChunk(cx,cz); this.chunks.set(key,c); return c; };
-City.update = function(rigPos){ const cx=Math.floor(rigPos.x/this.size), cz=Math.floor(rigPos.z/this.size);
-  for(let x=cx-this.radius;x<=cx+this.radius;x++) for(let z=cz-this.radius;z<=cz+this.radius;z++) this.ensure(x,z);
-};
+    <script>
+        const player = document.querySelector('#rig');
 
-// Locomoção por gaze
-const clock = new THREE.Clock();
-const tmpDir = new THREE.Vector3();
-const walkSpeed = 1.6;
+        // Lógica de Movimento: Andar até onde você olha no chão
+        document.querySelector('#chao').addEventListener('click', function (evt) {
+            // Pega a posição onde você clicou no chão
+            let novoPonto = evt.detail.intersection.point;
+            // Move o jogador (rig) para lá (mantendo a altura Y em 0)
+            player.setAttribute('animation', {
+                property: 'position',
+                to: `${novoPonto.x} 0 ${novoPonto.z}`,
+                dur: 2000,
+                easing: 'easeInOutQuad'
+            });
+        });
 
-renderer.setAnimationLoop(()=>{
-  const dt = clock.getDelta();
-  const xrCam = renderer.xr.getCamera(camera);
-  const rig = xrCam.parent || camera;
-
-  // Movimento por gaze (acima do horizonte)
-  tmpDir.set(0,0,-1).applyQuaternion(xrCam.quaternion);
-  const shouldWalk = tmpDir.y > -0.1;
-  if (shouldWalk){
-    const forward = new THREE.Vector3(tmpDir.x,0,tmpDir.z).normalize();
-    rig.position.addScaledVector(forward, walkSpeed*dt);
-    // vignette.visible = true; // opcional
-  } else {
-    // vignette.visible = false;
-  }
-
-  // Atualiza cidade
-  City.update(rig.position);
-
-  renderer.render(scene, camera);
-});
-
-// Resize
-window.addEventListener('resize', ()=>{
-  camera.aspect = window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-});
-</script>
+        // Feedback visual no console
+        document.querySelectorAll('.interativel').forEach(animal => {
+            animal.addEventListener('click', function () {
+                alert("Você alimentou o " + this.id + "!");
+            });
+        });
+    </script>
 </body>
 </html>
-
