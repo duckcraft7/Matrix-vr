@@ -1,101 +1,135 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <title>Matrix V27 - Realismo e Interiores</title>
-    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-    <script>
-      let emMovimento = false;
-      let alvoX = 0, alvoZ = 0;
-
-      // Componente de Movimento Suave por Olhar
-      AFRAME.registerComponent('walk-watch', {
-        tick: function () {
-          const raycaster = this.el.components.raycaster;
-          const intersection = raycaster.getIntersection(document.querySelector('#chao-cidade'));
-          const cursor = document.querySelector('#cursor-visual');
-
-          if (intersection && intersection.distance < 15) { // Limite de 15 metros para andar
-            cursor.setAttribute('color', 'lime');
-            alvoX = intersection.point.x;
-            alvoZ = intersection.point.z;
-            emMovimento = true;
-          } else {
-            cursor.setAttribute('color', 'red');
-            emMovimento = false;
-          }
-
-          if (emMovimento) {
-            const rig = document.querySelector('#rig').object3D;
-            const dx = alvoX - rig.position.x;
-            const dz = alvoZ - rig.position.z;
-            const dist = Math.sqrt(dx*dx + dz*dz);
-
-            if (dist > 0.5) { // Se não chegou no ponto, caminha
-              rig.position.x += (dx / dist) * 0.08;
-              rig.position.z += (dz / dist) * 0.08;
-            }
-          }
+<head>
+  <title>Nova Vida: Mundo Rural VR - Explore o Campo!</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <!-- Auto-walk: incline cabeça para frente para andar -->
+  <script>
+    AFRAME.registerComponent('autowalk', {
+      schema: {
+        speed: {type: 'number', default: 0.04}, // Mais lento para caminhada rural
+        threshold: {type: 'number', default: 12}
+      },
+      init: function () {
+        this.rig = this.el;
+        this.camera = this.el.querySelector('a-camera');
+        this.pitch = 0;
+      },
+      tick: function () {
+        if (!this.camera) return;
+        this.pitch = this.camera.getAttribute('rotation').x || 0;
+        const forward = this.pitch > this.data.threshold ? -1 : (this.pitch < -this.data.threshold ? 1 : 0);
+        if (forward !== 0) {
+          const direction = new THREE.Vector3();
+          this.camera.object3D.getWorldDirection(direction);
+          direction.y = 0;
+          direction.normalize();
+          this.rig.object3D.position.add(direction.multiplyScalar(this.data.speed * forward));
         }
-      });
+      }
+    });
+  </script>
+</head>
+<body>
+  <a-scene fog="type: linear; color: #90EE90; near: 20; far: 200">
+    <!-- Céu HDR rural fazenda (campos com nuvens suaves) -->
+    <a-sky material="shader: background; src: https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/farm_field_puresky_1k.hdr"></a-sky>
 
-      // Gerador de NPCs (Humanos)
-      AFRAME.registerComponent('spawn-npcs', {
-        init: function () {
-          for(let i=0; i<20; i++) {
-            let npc = document.createElement('a-box');
-            npc.setAttribute('position', `${(Math.random()-0.5)*100} 0.8 ${(Math.random()-0.5)*100}`);
-            npc.setAttribute('width', 0.6); npc.setAttribute('height', 1.7); npc.setAttribute('depth', 0.4);
-            npc.setAttribute('color', '#333');
-            // Animação simples de caminhada
-            npc.setAttribute('animation', `property: position; to: ${npc.getAttribute('position').x} 0.8 100; dur: ${10000 + Math.random()*20000}; loop: true; easing: linear`);
-            this.el.appendChild(npc);
-          }
-        }
-      });
-    </script>
-  </head>
-  <body>
-    <a-scene background="color: #87CEEB" fog="type: exponential; color: #a3d0e4; density: 0.015">
-      
-      <a-entity id="rig" position="0 0.1 5">
-        <a-camera look-controls raycaster="objects: #chao-cidade; far: 20" walk-watch>
-          <a-ring id="cursor-visual" position="0 0 -1" radius-inner="0.02" radius-outer="0.03" color="lime"></a-ring>
-        </a-camera>
-      </a-entity>
+    <!-- Iluminação natural rural (sol suave) -->
+    <a-entity light="type: ambient; color: #BDB76B; intensity: 0.7"></a-entity>
+    <a-entity light="type: directional; color: #FFFACD; intensity: 1.0" position="1 10 1" rotation="-40 45 0"></a-entity>
+    <a-entity light="type: hemisphere; color: #90EE90; groundColor: #228B22; intensity: 0.4"></a-entity>
 
-      <a-entity id="mundo" spawn-npcs>
-        <a-plane id="chao-cidade" rotation="-90 0 0" width="1000" height="1000" color="#333"></a-plane>
-        
-        <a-entity position="0 0 -10">
-          <a-box position="0 15 0" width="15" height="30" depth="15" material="opacity: 0.3; transparent: true; color: #87CEEB"></a-box>
-          
-          <a-box position="0 2 0" width="14" height="4" depth="14" color="#eee" material="side: back">
-             <a-box position="0 -1.5 -5" width="6" height="1.2" depth="2" color="#444"></a-box>
-             <a-text value="RECEPCAO" position="0 0 -4.9" align="center" color="white" width="4"></a-text>
-             
-             <a-entity position="5 -2 -5">
-                <a-box width="2.5" height="3.5" depth="0.1" color="#777"></a-box> <a-text value="ELEVADOR" position="0 4 0" align="center" color="black"></a-text>
-             </a-entity>
-          </a-box>
-        </a-entity>
+    <!-- Chão: grama realista seamless -->
+    <a-plane position="0 0 -5" rotation="-90 0 0" width="300" height="300" material="src: https://threejs.org/examples/textures/terrain/grasslight-big.jpg; repeat: 80 80"></a-plane>
 
-        <a-box position="25 10 -10" width="20" height="20" depth="20" color="red">
-           <a-text value="SHOPPING" position="0 0 10.1" align="center" width="20"></a-text>
-        </a-box>
+    <!-- Fazenda principal: casa de madeira -->
+    <a-box position="-15 3 -25" width="12" height="6" depth="10" color="#D2B48C" material="metalness: 0.3; roughness: 0.7"></a-box>
+    <a-box position="-15 6.5 -25" width="8" height="4" depth="8" color="#DEB887" material="metalness: 0.5"></a-box> <!-- Telhado -->
+    <a-box position="-15 7.5 -25" width="8.5" height="0.5" depth="8.5" color="#8B4513"></a-box>
 
-        <a-box position="-25 15 -10" width="15" height="40" depth="15" color="blue">
-           <a-text value="BANCO" position="0 0 7.6" align="center" width="20"></a-text>
-        </a-box>
-      </a-entity>
+    <!-- Celeiro vermelho clássico -->
+    <a-box position="20 4 -30" width="15" height="8" depth="12" color="#CD853F" material="metalness: 0.2; roughness: 0.8"></a-box>
+    <a-box position="20 9 -30" width="12" height="5" depth="10" color="#A0522D"></a-box> <!-- Telhado inclinado -->
+    <a-box position="20 11 -30" width="12.5" height="0.5" depth="10.5" color="#8B4513"></a-box>
 
-      <a-entity light="type: ambient; color: #BBB"></a-entity>
-      <a-entity light="type: directional; intensity: 0.6" position="1 1 1"></a-entity>
+    <!-- Silo -->
+    <a-cylinder position="-30 5 -15" radius="2" height="10" color="#F5F5DC" material="metalness: 0.6"></a-cylinder>
+    <a-cylinder position="-30 10 -15" radius="2.2" height="1" color="#CD853F"></a-cylinder>
 
-    </a-scene>
+    <!-- Trator simples -->
+    <a-entity position="5 1 -20">
+      <a-box width="5" height="2" depth="3" color="#228B22"></a-box> <!-- Corpo -->
+      <a-box position="0 2.5 0" width="2" height="1.5" depth="2.5" color="#FF0000"></a-box> <!-- Cabine -->
+      <a-cylinder position="-2.5 0.5 1.5" radius="1" height="0.5" color="#000" rotation="-90 0 0"></a-cylinder> <!-- Roda -->
+      <a-cylinder position="2.5 0.5 1.5" radius="1" height="0.5" color="#000" rotation="-90 0 0"></a-cylinder>
+      <a-cylinder position="-2.5 0.5 -1.5" radius="1" height="0.5" color="#000" rotation="-90 0 0"></a-cylinder>
+      <a-cylinder position="2.5 0.5 -1.5" radius="1" height="0.5" color="#000" rotation="-90 0 0"></a-cylinder>
+    </a-entity>
 
-    <div style="position:fixed; bottom:20px; width:100%; text-align:center; color:white; font-family:sans-serif; pointer-events:none;">
-      OLHE PARA O CHÃO PERTO DE VOCÊ PARA CAMINHAR<br>
-      (Círculo Verde = Anda | Círculo Vermelho = Longe demais)
-    </div>
-  </body>
+    <!-- Vacas (3 simples, uma animada) -->
+    <a-entity position="-10 1 -35"> <!-- Vaca 1 -->
+      <a-box width="3" height="2.5" depth="5" color="#FFF"></a-box>
+      <a-box position="0 0 -2" width="2" height="1.5" depth="1.5" color="#000"></a-box> <!-- Cabeça -->
+      <a-box position="1.2 0.5 0" width="0.5" height="0.5" depth="1" color="#000"></a-box> <!-- Orelha -->
+    </a-entity>
+    <a-entity position="0 1 -40"> <!-- Vaca 2 -->
+      <a-box width="3" height="2.5" depth="5" color="#FFF"></a-box>
+      <a-box position="0 0 -2" width="2" height="1.5" depth="1.5" color="#000"></a-box>
+    </a-entity>
+    <a-entity position="10 1 -32" autowalk="speed:0"> <!-- Vaca 3 pastando (animação) -->
+      <a-box width="3" height="2.5" depth="5" color="#FFF"></a-box>
+      <a-box position="0 0 -2" width="2" height="1.5" depth="1.5" color="#000"></a-box>
+      <a-animation attribute="rotation" dur="3000" repeat="indefinite" to="0 360 0"></a-animation> <!-- "Pastando" girando -->
+    </a-entity>
+
+    <!-- Galinhas (animadas caminhando) -->
+    <a-entity position="-5 0.5 -28">
+      <a-sphere radius="0.3" color="#FFD700"></a-sphere>
+      <a-animation attribute="position" dur="4000" repeat="indefinite" to="-5 0.5 -22" direction="alternate"></a-animation>
+    </a-entity>
+    <a-entity position="5 0.5 -25">
+      <a-sphere radius="0.3" color="#FFD700"></a-sphere>
+      <a-animation attribute="position" dur="5000" repeat="indefinite" to="8 0.5 -28" direction="alternate"></a-animation>
+    </a-entity>
+
+    <!-- Árvores (várias para floresta rural) -->
+    <a-entity position="-25 2 -10"><a-cylinder radius="0.5" height="5" color="#8B4513"></a-cylinder><a-sphere position="0 5 0" radius="2.5" color="#228B22"></a-sphere></a-entity>
+    <a-entity position="30 2 -20"><a-cylinder radius="0.5" height="5" color="#8B4513"></a-cylinder><a-sphere position="0 5 0" radius="2.5" color="#228B22"></a-sphere></a-entity>
+    <a-entity position="-40 2 -35"><a-cylinder radius="0.5" height="5" color="#8B4513"></a-cylinder><a-sphere position="0 5 0" radius="2.5" color="#228B22"></a-sphere></a-entity>
+    <a-entity position="15 2 -50"><a-cylinder radius="0.5" height="5" color="#8B4513"></a-cylinder><a-sphere position="0 5 0" radius="2.5" color="#228B22"></a-sphere></a-entity>
+    <a-entity position="-5 2 -55"><a-cylinder radius="0.5" height="5" color="#8B4513"></a-cylinder><a-sphere position="0 5 0" radius="2.5" color="#228B22"></a-sphere></a-entity>
+    <a-entity position="35 2 -45"><a-cylinder radius="0.5" height="5" color="#8B4513"></a-cylinder><a-sphere position="0 5 0" radius="2.5" color="#228B22"></a-sphere></a-entity>
+
+    <!-- Cerca de madeira ao redor da fazenda -->
+    <a-box position="-25 1 -20" width="0.3" height="2" depth="30" color="#A0522D"></a-box>
+    <a-box position="35 1 -20" width="0.3" height="2" depth="30" color="#A0522D"></a-box>
+    <a-box position="-5 1 -45" rotation="0 0 90" width="0.3" height="2" depth="60" color="#A0522D"></a-box>
+
+    <!-- Rio/riacho simples -->
+    <a-plane position="25 0.1 -60" rotation="-85 0 0" width="40" height="8" color="#4169E1" material="shader: flat; transparent: true; opacity: 0.8; repeat: 10 1"></a-plane>
+
+    <!-- Fardos de feno -->
+    <a-cylinder position="-20 1 -10" radius="1.2" height="1.5" color="#DAA520"></a-cylinder>
+    <a-cylinder position="25 1 -10" radius="1.2" height="1.5" color="#DAA520"></a-cylinder>
+
+    <!-- Texto imersivo -->
+    <a-text value="Bem-vindo à sua nova vida no campo!\nExplore a fazenda, cuide dos animais." 
+            position="0 4 -12" color="#FFF" align="center" scale="2.5 2.5 2.5" 
+            material="opacity: 0.9" rotation="0 180 0"></a-text>
+
+    <!-- Som ambiente rural: pássaros, riacho, vento -->
+    <a-sound src="https://cdn.pixabay.com/download/audio/2022/03/24/audio_a684b9d1b5.mp3?filename=birds-singing-and-stream-177311.mp3" 
+            autoplay="true" loop="true" volume="0.4" positional="false"></a-sound>
+
+    <!-- Câmera VR com auto-walk -->
+    <a-entity id="rig" autowalk="speed: 0.04; threshold: 12" position="0 0 5">
+      <a-camera look-controls position="0 1.6 0">
+        <a-cursor fuse="true" fuse-timeout="2000" color="#00FF00" scale="0.1 0.1 0.1"></a-cursor>
+      </a-camera>
+    </a-entity>
+  </a-scene>
+</body>
 </html>
